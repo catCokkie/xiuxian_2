@@ -1,0 +1,32 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="xiuxian2"
+run/main_scene="res://scenes/PrototypeRoot.tscn"
+config/features=PackedStringArray("4.5", "C#", "Forward Plus")
+config/icon="res://icon.svg"
+
+[autoload]
+
+LevelConfigLoader="*res://scripts/services/LevelConfigLoader.cs"
+InputActivityState="*res://scripts/services/InputActivityState.cs"
+InputHookService="*res://scripts/services/InputHookService.cs"
+InputPauseShortcut="*res://scripts/services/InputPauseShortcut.cs"
+BackpackState="*res://scripts/services/BackpackState.cs"
+ResourceWalletState="*res://scripts/services/ResourceWalletState.cs"
+PlayerProgressState="*res://scripts/services/PlayerProgressState.cs"
+ActivityConversionService="*res://scripts/services/ActivityConversionService.cs"
+CloudSaveSyncService="*res://scripts/services/CloudSaveSyncService.cs"
+
+[dotnet]
+
+project/assembly_name="xiuxian2"
