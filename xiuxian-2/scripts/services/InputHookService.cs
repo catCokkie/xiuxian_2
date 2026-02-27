@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using System;
 using System.Runtime.InteropServices;
 
@@ -18,12 +18,16 @@ namespace Xiuxian.Scripts.Services
 
         [Export] public bool AutoStart { get; set; } = true;
         [Export] public bool IsPaused { get; set; } = false;
+        [Export] public bool EnableInAppFallback { get; set; } = false;
+        [Export] public bool ForceGlobalCapture { get; set; } = true;
+        [Export] public double GlobalHookRetryIntervalSeconds { get; set; } = 2.0;
 
         // 依赖：输入状态管理器
         [Export] public NodePath ActivityStatePath { get; set; } = "/root/InputActivityState";
 
         private InputActivityState _activityState;
         private bool _isHookActive = false;
+        private double _retryCooldown;
 
         // Win32 API 委托和句柄
         private delegate IntPtr LowLevelProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -49,6 +53,7 @@ namespace Xiuxian.Scripts.Services
 
             _keyboardProc = KeyboardHookCallback;
             _mouseProc = MouseHookCallback;
+            ProcessMode = ProcessModeEnum.Always;
 
             if (AutoStart)
             {
@@ -56,9 +61,62 @@ namespace Xiuxian.Scripts.Services
             }
         }
 
+        public override void _Process(double delta)
+        {
+            if (!ForceGlobalCapture || IsPaused || _isHookActive || !IsWindowsPlatform())
+            {
+                return;
+            }
+
+            _retryCooldown -= delta;
+            if (_retryCooldown > 0.0)
+            {
+                return;
+            }
+
+            _retryCooldown = Math.Max(0.2, GlobalHookRetryIntervalSeconds);
+            StartHook();
+        }
+
         public override void _ExitTree()
         {
             StopHook();
+        }
+
+        public override void _Input(InputEvent @event)
+        {
+            if (!EnableInAppFallback || ForceGlobalCapture || IsPaused || _activityState == null)
+            {
+                return;
+            }
+
+            // If global Windows hooks are active, avoid double-counting in-app events.
+            if (_isHookActive && IsWindowsPlatform())
+            {
+                return;
+            }
+
+            switch (@event)
+            {
+                case InputEventKey keyEvent when keyEvent.Pressed && !keyEvent.Echo:
+                    _activityState.RegisterKeyDown();
+                    break;
+
+                case InputEventMouseButton mouseButton when mouseButton.Pressed:
+                    if (mouseButton.ButtonIndex == MouseButton.WheelUp || mouseButton.ButtonIndex == MouseButton.WheelDown)
+                    {
+                        _activityState.RegisterMouseScroll(1);
+                    }
+                    else
+                    {
+                        _activityState.RegisterMouseClick();
+                    }
+                    break;
+
+                case InputEventMouseMotion motionEvent:
+                    _activityState.RegisterMouseMove(motionEvent.Relative.Length());
+                    break;
+            }
         }
 
         /// <summary>
@@ -83,7 +141,8 @@ namespace Xiuxian.Scripts.Services
 
             try
             {
-                IntPtr hModule = GetModuleHandle(null);
+                // For low-level global hooks, null module handle is valid when callback is in current process.
+                IntPtr hModule = IntPtr.Zero;
 
                 // 设置键盘钩子
                 _keyboardHookId = SetWindowsHookEx(WH_KEYBOARD_LL, _keyboardProc, hModule, 0);
@@ -92,6 +151,15 @@ namespace Xiuxian.Scripts.Services
                     int error = Marshal.GetLastWin32Error();
                     GD.PushError($"Failed to set keyboard hook. Error: {error}");
                     EmitSignal(SignalName.InputError, $"Keyboard hook failed: {error}");
+                    _retryCooldown = Math.Max(0.2, GlobalHookRetryIntervalSeconds);
+                    if (ForceGlobalCapture)
+                    {
+                        GD.PushWarning("InputHookService: Global-only mode active, waiting for next hook retry.");
+                    }
+                    else
+                    {
+                        GD.PushWarning("InputHookService: Falling back to in-app input capture.");
+                    }
                     return;
                 }
 
@@ -104,10 +172,20 @@ namespace Xiuxian.Scripts.Services
                     EmitSignal(SignalName.InputError, $"Mouse hook failed: {error}");
                     UnhookWindowsHookEx(_keyboardHookId);
                     _keyboardHookId = IntPtr.Zero;
+                    _retryCooldown = Math.Max(0.2, GlobalHookRetryIntervalSeconds);
+                    if (ForceGlobalCapture)
+                    {
+                        GD.PushWarning("InputHookService: Global-only mode active, waiting for next hook retry.");
+                    }
+                    else
+                    {
+                        GD.PushWarning("InputHookService: Falling back to in-app input capture.");
+                    }
                     return;
                 }
 
                 _isHookActive = true;
+                _retryCooldown = 0.0;
                 EmitSignal(SignalName.HookStateChanged, true);
                 GD.Print("InputHookService: Global hooks started successfully");
             }
@@ -115,6 +193,15 @@ namespace Xiuxian.Scripts.Services
             {
                 GD.PushError($"InputHookService: Exception starting hooks: {ex.Message}");
                 EmitSignal(SignalName.InputError, ex.Message);
+                _retryCooldown = Math.Max(0.2, GlobalHookRetryIntervalSeconds);
+                if (ForceGlobalCapture)
+                {
+                    GD.PushWarning("InputHookService: Global-only mode active, waiting for next hook retry.");
+                }
+                else
+                {
+                    GD.PushWarning("InputHookService: Falling back to in-app input capture.");
+                }
             }
         }
 
@@ -139,6 +226,7 @@ namespace Xiuxian.Scripts.Services
             }
 
             _isHookActive = false;
+            _retryCooldown = Math.Max(0.2, GlobalHookRetryIntervalSeconds);
             EmitSignal(SignalName.HookStateChanged, false);
             GD.Print("InputHookService: Global hooks stopped");
         }

@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using System.Collections.Generic;
 using System.Globalization;
 using Xiuxian.Scripts.Services;
@@ -10,27 +10,26 @@ public partial class BookTabsController : Control
 
     private readonly Dictionary<string, string> _leftTabContentMap = new()
     {
-        { "CultivationTab", "修炼概况\n- 当前境界\n- 突破条件\n- 心法加成" },
-        { "EquipmentTab", "装备情况\n- 武器/护具/饰品\n- 词条预览\n- 套装效果" },
-        { "StatsTab", "统计概览\n- 总输入次数\n- 累计探索时长\n- 战斗胜率" },
+        { "CultivationTab", UiText.CultivationTemplate },
+        { "EquipmentTab", UiText.EquipmentTemplate },
+        { "StatsTab", UiText.StatsTemplate },
     };
 
     private readonly Dictionary<string, string> _rightTabContentMap = new()
     {
-        { "OnlineTab", "联机\n该功能开发中。" },
-        { "BugTab", "Bug反馈\n- 描述问题\n- 复制日志路径\n- 导出反馈包" },
-        { "SettingsTab", "设置" },
+        { "OnlineTab", UiText.OnlineTemplate },
+        { "BugTab", UiText.BugTemplate },
+        { "SettingsTab", UiText.SettingsTitle },
     };
 
     private RichTextLabel _leftContentLabel = null!;
-    private RichTextLabel _rightContentLabel = null!;
     private Label _leftTitleLabel = null!;
-    private Label _rightTitleLabel = null!;
     private Label _coinLabel = null!;
     private Control _leftPage = null!;
     private Control _rightPage = null!;
+    private Button _closeButton = null!;
 
-    private VBoxContainer _settingsNavRoot = null!;
+    private HBoxContainer _settingsNavRoot = null!;
     private VBoxContainer _settingsSystemRoot = null!;
     private VBoxContainer _settingsDisplayRoot = null!;
     private VBoxContainer _settingsProgressRoot = null!;
@@ -58,7 +57,6 @@ public partial class BookTabsController : Control
     private CheckButton _milestoneTipsCheck = null!;
 
     private Tween? _leftTween;
-    private Tween? _rightTween;
     private InputActivityState? _activityState;
     private BackpackState? _backpackState;
     private ResourceWalletState? _resourceWalletState;
@@ -66,6 +64,7 @@ public partial class BookTabsController : Control
 
     public string ActiveLeftTabName { get; private set; } = "CultivationTab";
     public string ActiveRightTabName { get; private set; } = "OnlineTab";
+    private bool _isShowingRightTab;
 
     private string _activeSettingsSection = "system";
     private bool _isApplyingSettingsUi;
@@ -92,12 +91,12 @@ public partial class BookTabsController : Control
     public override void _Ready()
     {
         _leftContentLabel = GetNode<RichTextLabel>("SpreadBody/LeftPage/LeftContentLabel");
-        _rightContentLabel = GetNode<RichTextLabel>("SpreadBody/RightPage/RightContentLabel");
         _leftTitleLabel = GetNode<Label>("SpreadBody/LeftPage/LeftTitle");
-        _rightTitleLabel = GetNode<Label>("SpreadBody/RightPage/RightTitle");
         _coinLabel = GetNode<Label>("BottomBar/CoinLabel");
         _leftPage = GetNode<Control>("SpreadBody/LeftPage");
         _rightPage = GetNode<Control>("SpreadBody/RightPage");
+        _closeButton = GetNode<Button>("CloseButton");
+        _closeButton.Pressed += CloseWindow;
         _activityState = GetNodeOrNull<InputActivityState>("/root/InputActivityState");
         _backpackState = GetNodeOrNull<BackpackState>("/root/BackpackState");
         _resourceWalletState = GetNodeOrNull<ResourceWalletState>("/root/ResourceWalletState");
@@ -119,6 +118,8 @@ public partial class BookTabsController : Control
         {
             _playerProgressState.RealmProgressChanged += OnRealmProgressChanged;
         }
+
+        ApplyStaticTexts();
 
         BuildSettingsUi();
         ApplySettingsRuntime();
@@ -155,7 +156,7 @@ public partial class BookTabsController : Control
 
     public void SetSpiritStone(int amount)
     {
-        _coinLabel.Text = $"灵石 {amount}";
+        _coinLabel.Text = UiText.SpiritStone(amount);
     }
 
     public void RestoreActiveTabs(string leftTabName, string rightTabName)
@@ -172,25 +173,11 @@ public partial class BookTabsController : Control
 
         ActiveLeftTabName = leftTabName;
         ActiveRightTabName = rightTabName;
+        _isShowingRightTab = false;
 
         SyncButtons("TopStrip/LeftTabs", _leftTabContentMap.Keys, ActiveLeftTabName);
         SyncButtons("TopStrip/RightTabs", _rightTabContentMap.Keys, ActiveRightTabName);
-
-        _leftTitleLabel.Text = ButtonTextForTab("TopStrip/LeftTabs", ActiveLeftTabName);
-        _rightTitleLabel.Text = ButtonTextForTab("TopStrip/RightTabs", ActiveRightTabName);
-        _leftContentLabel.Text = GetLeftTabContent(ActiveLeftTabName);
-
-        if (ActiveRightTabName == "SettingsTab")
-        {
-            _rightContentLabel.Visible = false;
-        }
-        else
-        {
-            _rightContentLabel.Visible = true;
-            _rightContentLabel.Text = _rightTabContentMap[ActiveRightTabName];
-        }
-
-        UpdateSettingsUiVisibility();
+        RefreshCurrentPageContent();
     }
 
     public Godot.Collections.Dictionary<string, Variant> ToSystemSettingsDictionary()
@@ -220,9 +207,9 @@ public partial class BookTabsController : Control
         }
 
         ActiveLeftTabName = tabName;
+        _isShowingRightTab = false;
         SyncButtons("TopStrip/LeftTabs", _leftTabContentMap.Keys, ActiveLeftTabName);
-        _leftTitleLabel.Text = ButtonTextForTab("TopStrip/LeftTabs", tabName);
-        AnimateContentSwap(_leftContentLabel, _leftTween, GetLeftTabContent(tabName), tween => _leftTween = tween, true);
+        RefreshCurrentPageContent();
         EmitSignal(SignalName.ActiveTabsChanged, ActiveLeftTabName, ActiveRightTabName);
     }
 
@@ -254,7 +241,7 @@ public partial class BookTabsController : Control
             return;
         }
 
-        if (ActiveLeftTabName == "CultivationTab" || ActiveLeftTabName == "StatsTab")
+        if (!_isShowingRightTab && (ActiveLeftTabName == "CultivationTab" || ActiveLeftTabName == "StatsTab"))
         {
             _leftContentLabel.Text = GetLeftTabContent(ActiveLeftTabName);
         }
@@ -281,13 +268,15 @@ public partial class BookTabsController : Control
         double expPercent = expRequired > 0.0 ? _playerProgressState.RealmExp / expRequired * 100.0 : 0.0;
 
         return
-            $"修炼概况\n" +
-            $"- 当前境界: 炼气{_playerProgressState.RealmLevel}层\n" +
-            $"- 境界经验: {_playerProgressState.RealmExp:0.0}/{expRequired:0.0} ({expPercent:0}%)\n" +
-            $"- 灵气: {_resourceWalletState.Lingqi:0.0}\n" +
-            $"- 悟性: {_resourceWalletState.Insight:0.0}\n" +
-            $"- 灵宠亲和: {_resourceWalletState.PetAffinity:0.0}\n" +
-            $"- 心情倍率: x{_playerProgressState.GetMoodMultiplier():0.00}";
+            UiText.CultivationOverview(
+                _playerProgressState.RealmLevel,
+                _playerProgressState.RealmExp,
+                expRequired,
+                expPercent,
+                _resourceWalletState.Lingqi,
+                _resourceWalletState.Insight,
+                _resourceWalletState.PetAffinity,
+                _playerProgressState.GetMoodMultiplier());
     }
 
     private string BuildStatsOverviewText()
@@ -301,14 +290,14 @@ public partial class BookTabsController : Control
         int shardCount = _backpackState?.GetItemCount("lingqi_shard") ?? 0;
 
         return
-            $"统计概览\n" +
-            $"- 总键盘按下: {_activityState.TotalKeyDownCount:N0}\n" +
-            $"- 总鼠标点击: {_activityState.TotalMouseClickCount:N0}\n" +
-            $"- 总滚轮步数: {_activityState.TotalMouseScrollSteps:N0}\n" +
-            $"- 总移动距离: {_activityState.TotalMouseMoveDistancePx:N0}px\n" +
-            $"- AP缓冲: {_activityState.ApAccumulator:0.0}\n" +
-            $"- 灵草库存: {herbCount}\n" +
-            $"- 灵气碎片库存: {shardCount}";
+            UiText.StatsOverview(
+                _activityState.TotalKeyDownCount,
+                _activityState.TotalMouseClickCount,
+                _activityState.TotalMouseScrollSteps,
+                _activityState.TotalMouseMoveDistancePx,
+                _activityState.ApAccumulator,
+                herbCount,
+                shardCount);
     }
 
     private void RefreshCoinLabel()
@@ -329,67 +318,51 @@ public partial class BookTabsController : Control
         }
 
         ActiveRightTabName = tabName;
+        _isShowingRightTab = tabName != "SettingsTab";
         SyncButtons("TopStrip/RightTabs", _rightTabContentMap.Keys, ActiveRightTabName);
-        _rightTitleLabel.Text = ButtonTextForTab("TopStrip/RightTabs", tabName);
-
-        if (tabName == "SettingsTab")
-        {
-            _rightTween?.Kill();
-            _rightContentLabel.Visible = false;
-            _leftTitleLabel.Text = "设置";
-            ShowSettingsSection(_activeSettingsSection);
-            UpdateSettingsUiVisibility();
-        }
-        else
-        {
-            _rightContentLabel.Visible = true;
-            _leftTitleLabel.Text = ButtonTextForTab("TopStrip/LeftTabs", ActiveLeftTabName);
-            UpdateSettingsUiVisibility();
-            AnimateContentSwap(_rightContentLabel, _rightTween, _rightTabContentMap[tabName], tween => _rightTween = tween, false);
-        }
-
+        RefreshCurrentPageContent();
         EmitSignal(SignalName.ActiveTabsChanged, ActiveLeftTabName, ActiveRightTabName);
     }
 
     private void BuildSettingsUi()
     {
-        _settingsNavRoot = new VBoxContainer();
+        _settingsNavRoot = new HBoxContainer();
         _settingsNavRoot.Name = "SettingsNavRoot";
         _settingsNavRoot.SetAnchorsPreset(LayoutPreset.FullRect);
         _settingsNavRoot.OffsetLeft = 20.0f;
         _settingsNavRoot.OffsetTop = 36.0f;
         _settingsNavRoot.OffsetRight = -20.0f;
-        _settingsNavRoot.OffsetBottom = -72.0f;
+        _settingsNavRoot.OffsetBottom = -330.0f;
         _settingsNavRoot.AddThemeConstantOverride("separation", 8);
         _leftPage.AddChild(_settingsNavRoot);
 
-        _settingsSystemBtn = CreateSettingsSectionButton("系统", "system");
-        _settingsDisplayBtn = CreateSettingsSectionButton("画面", "display");
-        _settingsProgressBtn = CreateSettingsSectionButton("进度", "progress");
+        _settingsSystemBtn = CreateSettingsSectionButton(UiText.SystemSection, "system");
+        _settingsDisplayBtn = CreateSettingsSectionButton(UiText.DisplaySection, "display");
+        _settingsProgressBtn = CreateSettingsSectionButton(UiText.ProgressSection, "progress");
 
         _settingsActionRoot = new VBoxContainer();
         _settingsActionRoot.Name = "SettingsActionRoot";
         _settingsActionRoot.SetAnchorsPreset(LayoutPreset.FullRect);
         _settingsActionRoot.OffsetLeft = 20.0f;
-        _settingsActionRoot.OffsetTop = 300.0f;
+        _settingsActionRoot.OffsetTop = 286.0f;
         _settingsActionRoot.OffsetRight = -20.0f;
         _settingsActionRoot.OffsetBottom = -12.0f;
         _settingsActionRoot.AddThemeConstantOverride("separation", 8);
         _leftPage.AddChild(_settingsActionRoot);
 
         Button resetButton = new();
-        resetButton.Text = "重置并重启";
+        resetButton.Text = UiText.ResetAndApply;
         resetButton.Pressed += ResetSettings;
         _settingsActionRoot.AddChild(resetButton);
 
         Button quitButton = new();
-        quitButton.Text = "退出";
+        quitButton.Text = UiText.Quit;
         quitButton.Pressed += () => GetTree().Quit();
         _settingsActionRoot.AddChild(quitButton);
 
-        _settingsSystemRoot = CreateRightSectionRoot("SettingsSystemRoot");
-        _settingsDisplayRoot = CreateRightSectionRoot("SettingsDisplayRoot");
-        _settingsProgressRoot = CreateRightSectionRoot("SettingsProgressRoot");
+        _settingsSystemRoot = CreateSettingsSectionRoot("SettingsSystemRoot");
+        _settingsDisplayRoot = CreateSettingsSectionRoot("SettingsDisplayRoot");
+        _settingsProgressRoot = CreateSettingsSectionRoot("SettingsProgressRoot");
 
         BuildSystemSection(_settingsSystemRoot);
         BuildDisplaySection(_settingsDisplayRoot);
@@ -406,30 +379,30 @@ public partial class BookTabsController : Control
         return button;
     }
 
-    private VBoxContainer CreateRightSectionRoot(string name)
+    private VBoxContainer CreateSettingsSectionRoot(string name)
     {
         VBoxContainer root = new();
         root.Name = name;
         root.SetAnchorsPreset(LayoutPreset.FullRect);
-        root.OffsetLeft = 16.0f;
-        root.OffsetTop = 36.0f;
-        root.OffsetRight = -16.0f;
-        root.OffsetBottom = -16.0f;
+        root.OffsetLeft = 20.0f;
+        root.OffsetTop = 74.0f;
+        root.OffsetRight = -20.0f;
+        root.OffsetBottom = -128.0f;
         root.AddThemeConstantOverride("separation", 6);
-        _rightPage.AddChild(root);
+        _leftPage.AddChild(root);
         return root;
     }
 
     private void BuildSystemSection(VBoxContainer root)
     {
-        _languageOption = AddOptionRow(root, "语言", new[] { "简体中文", "English" });
-        _keepOnTopCheck = AddCheckRow(root, "保持窗口置顶");
-        _taskbarIconCheck = AddCheckRow(root, "任务栏图标");
-        _startupAnimCheck = AddCheckRow(root, "开机启动动画");
-        _adminModeCheck = AddCheckRow(root, "管理员模式");
-        _handwritingCheck = AddCheckRow(root, "手写支持");
-        _vsyncCheck = AddCheckRow(root, "垂直同步");
-        _fpsOption = AddOptionRow(root, "帧率", new[] { "30", "60", "120", "不限" });
+        _languageOption = AddOptionRow(root, UiText.Language, new[] { "简体中文", "English" });
+        _keepOnTopCheck = AddCheckRow(root, UiText.KeepOnTop);
+        _taskbarIconCheck = AddCheckRow(root, UiText.TaskbarIcon);
+        _startupAnimCheck = AddCheckRow(root, UiText.StartupAnimation);
+        _adminModeCheck = AddCheckRow(root, UiText.AdminMode);
+        _handwritingCheck = AddCheckRow(root, UiText.HandwritingSupport);
+        _vsyncCheck = AddCheckRow(root, UiText.Vsync);
+        _fpsOption = AddOptionRow(root, UiText.MaxFps, new[] { "30", "60", "120", "不限" });
 
         _languageOption.ItemSelected += _ => OnLanguageChanged();
         _keepOnTopCheck.Toggled += value => OnSettingChanged("keep_on_top", value, applyNow: true);
@@ -443,23 +416,23 @@ public partial class BookTabsController : Control
 
     private void BuildDisplaySection(VBoxContainer root)
     {
-        _resolutionOption = AddOptionRow(root, "主界面分辨率", new[] { "1280x720", "1600x900", "1920x1080", "2560x1440" });
-        _showControlMarkerCheck = AddCheckRow(root, "显示界面控制标记");
+        _resolutionOption = AddOptionRow(root, UiText.Resolution, new[] { "1280x720", "1600x900", "1920x1080", "2560x1440" });
+        _showControlMarkerCheck = AddCheckRow(root, UiText.ShowControlMarkers);
 
         HBoxContainer logRow = new();
         logRow.AddThemeConstantOverride("separation", 8);
         root.AddChild(logRow);
         Label logLabel = new();
-        logLabel.Text = "显示日志文件夹";
+        logLabel.Text = UiText.LogFolder;
         logLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         logRow.AddChild(logLabel);
         _openLogFolderButton = new();
-        _openLogFolderButton.Text = "打开";
+        _openLogFolderButton.Text = UiText.Open;
         _openLogFolderButton.Pressed += OpenLogFolder;
         logRow.AddChild(_openLogFolderButton);
 
-        _gameScaleOption = AddOptionRow(root, "游戏缩放比例", new[] { "1.00", "1.10", "1.25", "1.33", "1.50" });
-        _uiScaleOption = AddOptionRow(root, "界面缩放比例", new[] { "1.00", "1.10", "1.25", "1.33", "1.50" });
+        _gameScaleOption = AddOptionRow(root, UiText.GameScale, new[] { "1.00", "1.10", "1.25", "1.33", "1.50" });
+        _uiScaleOption = AddOptionRow(root, UiText.UiScale, new[] { "1.00", "1.10", "1.25", "1.33", "1.50" });
 
         _resolutionOption.ItemSelected += _ => OnResolutionChanged();
         _showControlMarkerCheck.Toggled += value => OnSettingChanged("show_control_markers", value);
@@ -469,14 +442,14 @@ public partial class BookTabsController : Control
 
     private void BuildProgressSection(VBoxContainer root)
     {
-        _autoSaveIntervalOption = AddOptionRow(root, "自动存档频率", new[] { "5 秒", "10 秒", "30 秒", "60 秒" });
-        _cloudSyncCheck = AddCheckRow(root, "云端同步");
-        _milestoneTipsCheck = AddCheckRow(root, "里程碑提示");
+        _autoSaveIntervalOption = AddOptionRow(root, UiText.AutoSaveInterval, new[] { "5 秒", "10 秒", "30 秒", "60 秒" });
+        _cloudSyncCheck = AddCheckRow(root, UiText.CloudSync);
+        _milestoneTipsCheck = AddCheckRow(root, UiText.MilestoneTips);
 
         RichTextLabel hint = new();
         hint.FitContent = true;
         hint.ScrollActive = false;
-        hint.Text = "说明：云端同步功能尚在开发中，当前仅保存开关状态。";
+        hint.Text = UiText.DevHintCloudSync;
         root.AddChild(hint);
 
         _autoSaveIntervalOption.ItemSelected += _ => OnAutoSaveIntervalChanged();
@@ -543,6 +516,7 @@ public partial class BookTabsController : Control
         _settingsDisplayRoot.Visible = isSettings && _activeSettingsSection == "display";
         _settingsProgressRoot.Visible = isSettings && _activeSettingsSection == "progress";
         _leftContentLabel.Visible = !isSettings;
+        _rightPage.Visible = false;
     }
 
     private void UpdateSettingsControlsFromState()
@@ -737,6 +711,58 @@ public partial class BookTabsController : Control
         GetWindow().ContentScaleFactor = (float)uiScale;
     }
 
+    private void RefreshCurrentPageContent()
+    {
+        if (ActiveRightTabName == "SettingsTab")
+        {
+            _leftTitleLabel.Text = UiText.SettingsTitle;
+            UpdateSettingsUiVisibility();
+            ShowSettingsSection(_activeSettingsSection);
+            return;
+        }
+
+        UpdateSettingsUiVisibility();
+
+        if (_isShowingRightTab)
+        {
+            _leftTitleLabel.Text = ButtonTextForTab("TopStrip/RightTabs", ActiveRightTabName);
+            AnimateContentSwap(_leftContentLabel, _leftTween, _rightTabContentMap[ActiveRightTabName], tween => _leftTween = tween, false);
+            return;
+        }
+
+        _leftTitleLabel.Text = ButtonTextForTab("TopStrip/LeftTabs", ActiveLeftTabName);
+        AnimateContentSwap(_leftContentLabel, _leftTween, GetLeftTabContent(ActiveLeftTabName), tween => _leftTween = tween, true);
+    }
+
+    private void CloseWindow()
+    {
+        if (GetParent() is SubmenuWindowController submenu)
+        {
+            submenu.ToggleVisible();
+        }
+    }
+
+    private void ApplyStaticTexts()
+    {
+        SetButtonText("TopStrip/LeftTabs/CultivationTab", UiText.LeftTabCultivation);
+        SetButtonText("TopStrip/LeftTabs/EquipmentTab", UiText.LeftTabEquipment);
+        SetButtonText("TopStrip/LeftTabs/StatsTab", UiText.LeftTabStats);
+        SetButtonText("TopStrip/RightTabs/OnlineTab", UiText.RightTabOnline);
+        SetButtonText("TopStrip/RightTabs/BugTab", UiText.RightTabBug);
+        SetButtonText("TopStrip/RightTabs/SettingsTab", UiText.RightTabSettings);
+        _closeButton.Text = "X";
+    }
+
+    private void SetButtonText(string nodePath, string text)
+    {
+        if (!HasNode(nodePath))
+        {
+            return;
+        }
+
+        GetNode<Button>(nodePath).Text = text;
+    }
+
     private void BindButtons(IEnumerable<string> tabKeys, string groupPath, System.Action<string> setter)
     {
         foreach (string tabName in tabKeys)
@@ -806,3 +832,5 @@ public partial class BookTabsController : Control
         storeTween(outTween);
     }
 }
+
+

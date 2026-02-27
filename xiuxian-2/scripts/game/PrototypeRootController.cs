@@ -301,7 +301,11 @@ namespace Xiuxian.Scripts.Game
             }
 
             bool hookPaused = config.GetValue("input", "hook_paused", false).AsBool();
-            _hookService?.SetPaused(hookPaused);
+            if (hookPaused)
+            {
+                GD.PushWarning("PrototypeRootController: saved hook_paused=true detected, auto-resuming input capture.");
+            }
+            _hookService?.SetPaused(false);
         }
 
         private void WriteInputState(ConfigFile config)

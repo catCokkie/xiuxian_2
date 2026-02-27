@@ -98,6 +98,13 @@
         "phase_rules": [],
         "anti_afk_rule": "player_damage_minus_10pct_if_low_input_for_3_rounds"
       },
+      "visual": {
+        "portrait": "res://assets/ui/actor_placeholder.svg",
+        "animation": "hover",
+        "anim_speed": 2.2,
+        "anim_amplitude": 2.0,
+        "tint": [0.72, 0.96, 0.70, 1.0]
+      },
       "drops": {
         "drop_table_id": "drop_qi_outer_normal",
         "drop_roll_count": 1,
@@ -128,6 +135,13 @@
         "phase_rules": ["attack_speed_plus_10pct_below_30hp"],
         "anti_afk_rule": ""
       },
+      "visual": {
+        "portrait": "res://assets/ui/actor_placeholder.svg",
+        "animation": "pulse",
+        "anim_speed": 4.8,
+        "anim_amplitude": 0.06,
+        "tint": [0.78, 0.82, 1.0, 1.0]
+      },
       "drops": {
         "drop_table_id": "drop_qi_outer_normal",
         "drop_roll_count": 1,
@@ -157,6 +171,13 @@
         "skill_list": ["silk_debuff_minus_20pct_damage_next_round"],
         "phase_rules": ["summon_spiderling_every_2_rounds_below_50hp"],
         "anti_afk_rule": "silk_trigger_plus_20pct_if_low_input"
+      },
+      "visual": {
+        "portrait": "res://assets/ui/actor_placeholder.svg",
+        "animation": "hover",
+        "anim_speed": 1.8,
+        "anim_amplitude": 3.0,
+        "tint": [1.0, 0.72, 0.72, 1.0]
       },
       "drops": {
         "drop_table_id": "drop_qi_outer_elite",

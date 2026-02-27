@@ -13,13 +13,21 @@
 
 ## 当前进度快照（2026-02-26）
 - `M1-1` 已完成：`InputHookService -> InputActivityState -> ExploreProgressController` 已串联。
-- `M1-2` 已完成：全局输入服务已配置 AutoLoad（`InputActivityState`、`InputHookService`、`InputPauseShortcut`）。
-- `M1-3` 进行中：AP -> 资源 -> 境界经验完整链路待接入战斗掉落与成长结算。
+- `M1-2` 已完成：输入与状态服务 AutoLoad 已接入（`InputActivityState`、`InputHookService`、`InputPauseShortcut`、`LevelConfigLoader`、`ResourceWalletState`、`PlayerProgressState`、`ActivityConversionService`）。
+- `M1-3` 已完成：AP -> 资源 -> 境界经验链路已打通，探索进度按输入事件独立推进。
+- `M1-4` 已完成：关卡/怪物/掉落改为 JSON 配置驱动，支持多关卡轮转、战斗结算、保底与上限规则。
 
 ## M2 - 桌面 UI（4-5 天）
 - 实现底部桌宠条（常驻、低干扰）。
-- 实现书卷式三栏系统面板（左属性/中背包/右进度）。
-- 加入基础过场与按钮反馈。
+- 实现书卷式系统面板（顶部左右页签组 + 单页全宽内容区）。
+- 主条演出区保留核心状态，减少无效说明行。
+- UI 文案统一收口到 `scripts/ui/UiText.cs`。
+
+## M2 当前实现口径（与代码对齐）
+- 子菜单窗口：顶部左右两组页签，内容区单页全宽显示，左上角关闭按钮。
+- 主条窗口：`BattleTrack` 精简为一行核心状态 + 角色/怪物/HP 信息。
+- 状态机最小集：`Exploring`、`InBattle`、`ExploreComplete`。
+- `battle_state` 存档口径：`exploring` / `in_battle`（读档安全回退到 `exploring`）。
 
 ## M3 - 养成系统（4-5 天）
 - 境界突破、炼丹、灵宠心情与羁绊。
@@ -35,6 +43,11 @@
 - Steamworks SDK 正式接入（初始化、回调、发布构建校验）。
 - Steam Cloud 云存档联调（本地/云端冲突策略、首启拉取策略、失败回退）。
 - Steam 后台配置收尾（Cloud 配额、文件规则、测试分支验证）。
+
+## 下一阶段建议（M2.5）
+- 增加配置校验与模拟结果可视化（掉落命中率、保底触发率、日/小时上限命中率）。
+- 增加“最近战斗日志”面板（怪物、掉落、结算资源）。
+- 补齐最小自动化回归：输入推进、100%切关、战斗结算、保底/上限。
 
 ## V1 验收标准
 - 用户可在后台使用场景中持续获得可感知进度。

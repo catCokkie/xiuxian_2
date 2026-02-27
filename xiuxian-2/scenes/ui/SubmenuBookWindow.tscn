@@ -66,9 +66,17 @@ grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_1")
 script = ExtResource("2")
 
-[node name="TopStrip" type="HBoxContainer" parent="BookFrame"]
+[node name="CloseButton" type="Button" parent="BookFrame"]
 layout_mode = 0
 offset_left = 20.0
+offset_top = 8.0
+offset_right = 64.0
+offset_bottom = 40.0
+text = "X"
+
+[node name="TopStrip" type="HBoxContainer" parent="BookFrame"]
+layout_mode = 0
+offset_left = 72.0
 offset_top = 8.0
 offset_right = 940.0
 offset_bottom = 46.0
@@ -126,6 +134,7 @@ offset_bottom = 456.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_2")
 
 [node name="PageSplit" type="ColorRect" parent="BookFrame/SpreadBody"]
+visible = false
 layout_mode = 0
 offset_left = 456.0
 offset_top = 14.0
@@ -137,7 +146,7 @@ color = Color(0.486275, 0.333333, 0.211765, 0.639216)
 layout_mode = 0
 offset_left = 12.0
 offset_top = 12.0
-offset_right = 452.0
+offset_right = 908.0
 offset_bottom = 390.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_4")
 
@@ -165,6 +174,7 @@ fit_content = true
 text = "修炼概况"
 
 [node name="RightPage" type="Panel" parent="BookFrame/SpreadBody"]
+visible = false
 layout_mode = 0
 offset_left = 468.0
 offset_top = 12.0

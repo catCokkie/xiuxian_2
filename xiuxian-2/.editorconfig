@@ -2,3 +2,12 @@ root = true
 
 [*]
 charset = utf-8
+
+[*.cs]
+charset = utf-8-bom
+
+[*.md]
+charset = utf-8-bom
+
+[*.tscn]
+charset = utf-8

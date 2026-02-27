@@ -18,6 +18,7 @@ public partial class MainBarLayoutController : Control
     private Label _zoneLabel = null!;
     private ProgressBar _exploreProgressBar = null!;
     private Panel _battleTrack = null!;
+    private Panel _validationPanel = null!;
 
     private bool _isDragging;
     private bool _isResizing;
@@ -33,10 +34,14 @@ public partial class MainBarLayoutController : Control
         _zoneLabel = GetNode<Label>("Chrome/ZoneLabel");
         _exploreProgressBar = GetNode<ProgressBar>("Chrome/ExploreProgressBar");
         _battleTrack = GetNode<Panel>("Chrome/BattleTrack");
+        _validationPanel = GetNode<Panel>("Chrome/ConfigValidationPanel");
 
         _dragHandle.GuiInput += OnDragHandleGuiInput;
         _resizeHandle.GuiInput += OnResizeHandleGuiInput;
         _bookButton.Pressed += () => EmitSignal(SignalName.BookButtonPressed);
+        _dragHandle.Text = UiText.DragHandle;
+        _resizeHandle.Text = UiText.ResizeHandle;
+        _bookButton.Text = UiText.BookButton;
 
         _bottomMargin = Mathf.Max(MinBottomMargin, GetViewportRect().Size.Y - (Position.Y + Size.Y));
         _fixedBottomY = GetBottomLockedY();
@@ -130,6 +135,14 @@ public partial class MainBarLayoutController : Control
         _zoneLabel.Position = new Vector2(Size.X - _zoneLabel.Size.X - rightMargin, _zoneLabel.Position.Y);
         _exploreProgressBar.Position = new Vector2(Size.X - _exploreProgressBar.Size.X - rightMargin, _exploreProgressBar.Position.Y);
         _battleTrack.Size = new Vector2(Mathf.Max(320.0f, _exploreProgressBar.Position.X - _battleTrack.Position.X - 12.0f), _battleTrack.Size.Y);
+
+        if (_validationPanel != null)
+        {
+            float validationWidth = _validationPanel.Size.X;
+            float maxRight = _exploreProgressBar.Position.X - 10.0f;
+            float x = Mathf.Clamp(maxRight - validationWidth, _battleTrack.Position.X + 240.0f, Size.X - validationWidth - rightMargin);
+            _validationPanel.Position = new Vector2(x, _validationPanel.Position.Y);
+        }
     }
 
     private float GetBottomLockedY()

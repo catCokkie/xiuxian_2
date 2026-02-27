@@ -1,4 +1,4 @@
-using Godot;
+﻿using Godot;
 using Xiuxian.Scripts.Services;
 
 namespace Xiuxian.Scripts.UI
