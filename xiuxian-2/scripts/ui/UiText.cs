@@ -62,6 +62,14 @@ public static class UiText
     public const string ExploreIdle = "探索待命";
     public const string WaitingInput = "等待输入...";
     public const string ZoneComplete = "区域探索完成，切换下一区域";
+    public const string PetStatusExploring = "桌宠状态：探索中";
+    public const string PetInteractHint = "点击桌宠进行互动";
+    public const string CompactModeActive = "桌宠挂机中";
+    public const string CompactModeButton = "小窗";
+    public const string CompactExpandButton = "展开";
+    public const string DrawerBattleButton = "战斗";
+    public const string DrawerValidationButton = "校验";
+    public const string DrawerDebugButton = "调试";
 
     public static string CultivationOverview(
         int realmLevel,

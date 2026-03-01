@@ -11,6 +11,9 @@ public partial class MainBarLayoutController : Control
     [Export] public float MaxWidth = 1500.0f;
     [Export] public bool LockToBottom = true;
     [Export] public float MinBottomMargin = 8.0f;
+    [Export] public float SectionGap = 8.0f;
+    [Export] public float LineGap = 6.0f;
+    [Export] public float Padding = 10.0f;
 
     private Button _dragHandle = null!;
     private Button _resizeHandle = null!;
@@ -18,6 +21,7 @@ public partial class MainBarLayoutController : Control
     private Label _zoneLabel = null!;
     private Label _activityRateLabel = null!;
     private Label _realmStageLabel = null!;
+    private Label? _moveDebugLabel;
     private ProgressBar _exploreProgressBar = null!;
     private Label _cultivationLabel = null!;
     private ProgressBar _cultivationProgressBar = null!;
@@ -26,6 +30,22 @@ public partial class MainBarLayoutController : Control
     private Panel _validationPanel = null!;
     private OptionButton? _actionModeOptionButton;
     private OptionButton? _levelOptionButton;
+    private VBoxContainer _rootStack = null!;
+    private Panel _petStagePanel = null!;
+    private Label _petStatusChip = null!;
+    private Label _interactionHint = null!;
+    private HBoxContainer _drawerButtons = null!;
+    private Button _battleDrawerButton = null!;
+    private Button _validationDrawerButton = null!;
+    private Button _debugDrawerButton = null!;
+    private Button _compactModeButton = null!;
+    private Panel _compactPetBar = null!;
+    private Label _compactStatusLabel = null!;
+    private Button _compactExpandButton = null!;
+    private bool _compactMode;
+    private bool _battleDrawerRequested;
+    private bool _validationDrawerRequested;
+    private bool _debugDrawerRequested;
 
     private bool _isDragging;
     private bool _isResizing;
@@ -41,6 +61,7 @@ public partial class MainBarLayoutController : Control
         _zoneLabel = GetNode<Label>("Chrome/ZoneLabel");
         _activityRateLabel = GetNode<Label>("Chrome/ActivityRateLabel");
         _realmStageLabel = GetNode<Label>("Chrome/RealmStageLabel");
+        _moveDebugLabel = GetNodeOrNull<Label>("Chrome/MoveDebugLabel");
         _exploreProgressBar = GetNode<ProgressBar>("Chrome/ExploreProgressBar");
         _cultivationLabel = GetNode<Label>("Chrome/CultivationLabel");
         _cultivationProgressBar = GetNode<ProgressBar>("Chrome/CultivationProgressBar");
@@ -49,6 +70,18 @@ public partial class MainBarLayoutController : Control
         _validationPanel = GetNode<Panel>("Chrome/ConfigValidationPanel");
         _actionModeOptionButton = GetNodeOrNull<OptionButton>("Chrome/ActionModeOptionButton");
         _levelOptionButton = GetNodeOrNull<OptionButton>("Chrome/LevelOptionButton");
+        _rootStack = GetNode<VBoxContainer>("Chrome/RootStack");
+        _petStagePanel = GetNode<Panel>("Chrome/RootStack/PetStagePanel");
+        _petStatusChip = GetNode<Label>("Chrome/RootStack/PetStagePanel/PetStatusChip");
+        _interactionHint = GetNode<Label>("Chrome/RootStack/PetStagePanel/InteractionHint");
+        _drawerButtons = GetNode<HBoxContainer>("Chrome/RootStack/DrawerToggleButtons");
+        _battleDrawerButton = GetNode<Button>("Chrome/RootStack/DrawerToggleButtons/BattleDrawerButton");
+        _validationDrawerButton = GetNode<Button>("Chrome/RootStack/DrawerToggleButtons/ValidationDrawerButton");
+        _debugDrawerButton = GetNode<Button>("Chrome/RootStack/DrawerToggleButtons/DebugDrawerButton");
+        _compactModeButton = GetNode<Button>("Chrome/RootStack/DrawerToggleButtons/CompactModeButton");
+        _compactPetBar = GetNode<Panel>("Chrome/RootStack/CompactPetBar");
+        _compactStatusLabel = GetNode<Label>("Chrome/RootStack/CompactPetBar/CompactStatusLabel");
+        _compactExpandButton = GetNode<Button>("Chrome/RootStack/CompactPetBar/CompactExpandButton");
 
         _dragHandle.GuiInput += OnDragHandleGuiInput;
         _resizeHandle.GuiInput += OnResizeHandleGuiInput;
@@ -57,6 +90,22 @@ public partial class MainBarLayoutController : Control
         _resizeHandle.Text = UiText.ResizeHandle;
         _bookButton.Text = UiText.BookButton;
         _zoneLabel.Visible = false;
+        _battleDrawerButton.Text = UiText.DrawerBattleButton;
+        _validationDrawerButton.Text = UiText.DrawerValidationButton;
+        _debugDrawerButton.Text = UiText.DrawerDebugButton;
+        _compactModeButton.Text = UiText.CompactModeButton;
+        _compactExpandButton.Text = UiText.CompactExpandButton;
+        _battleDrawerButton.Pressed += () => SetDrawerVisible("battle", _battleDrawerButton.ButtonPressed);
+        _validationDrawerButton.Pressed += () => SetDrawerVisible("validation", _validationDrawerButton.ButtonPressed);
+        _debugDrawerButton.Pressed += () => SetDrawerVisible("debug", _debugDrawerButton.ButtonPressed);
+        _compactModeButton.Pressed += () => SetCompactMode(true);
+        _compactExpandButton.Pressed += () => SetCompactMode(false);
+        _petStatusChip.Text = UiText.PetStatusExploring;
+        _interactionHint.Text = UiText.PetInteractHint;
+        _compactStatusLabel.Text = UiText.CompactModeActive;
+        SetDrawerVisible("battle", false);
+        SetDrawerVisible("validation", false);
+        SetDrawerVisible("debug", false);
 
         _bottomMargin = Mathf.Max(MinBottomMargin, GetViewportRect().Size.Y - (Position.Y + Size.Y));
         _fixedBottomY = GetBottomLockedY();
@@ -142,44 +191,174 @@ public partial class MainBarLayoutController : Control
         UpdateRightAnchoredLayout();
     }
 
+    public void SetCompactMode(bool compact)
+    {
+        _compactMode = compact;
+        _compactPetBar.Visible = compact;
+        _petStagePanel.Visible = !compact;
+        _drawerButtons.Visible = !compact;
+        ApplyDrawerVisibility();
+        UpdateRightAnchoredLayout();
+    }
+
+    public bool IsCompactMode()
+    {
+        return _compactMode;
+    }
+
+    public void SetDrawerVisible(string drawerId, bool visible)
+    {
+        switch (drawerId)
+        {
+            case "battle":
+                _battleDrawerRequested = visible;
+                _battleDrawerButton.SetPressedNoSignal(visible);
+                break;
+            case "validation":
+                _validationDrawerRequested = visible;
+                _validationDrawerButton.SetPressedNoSignal(visible);
+                break;
+            case "debug":
+                _debugDrawerRequested = visible;
+                _debugDrawerButton.SetPressedNoSignal(visible);
+                break;
+        }
+        ApplyDrawerVisibility();
+        UpdateRightAnchoredLayout();
+    }
+
+    public bool IsDrawerVisible(string drawerId)
+    {
+        return drawerId switch
+        {
+            "battle" => _battleDrawerRequested,
+            "validation" => _validationDrawerRequested,
+            "debug" => _debugDrawerRequested,
+            _ => false
+        };
+    }
+
+    private void ApplyDrawerVisibility()
+    {
+        _battleTrack.Visible = !_compactMode && _battleDrawerRequested;
+        _validationPanel.Visible = !_compactMode && _validationDrawerRequested;
+        if (_moveDebugLabel != null)
+        {
+            _moveDebugLabel.Visible = !_compactMode && _debugDrawerRequested;
+        }
+    }
+
     private void UpdateRightAnchoredLayout()
     {
-        float rightMargin = 12.0f;
-        float controlRowY = _battleTrack.Position.Y + _battleTrack.Size.Y + 4.0f;
-        float textRowY = controlRowY + 34.0f;
-        float barRowY = textRowY + 22.0f;
-        float bottomTextY = controlRowY + 62.0f;
+        float rightMargin = Padding;
+        float leftMargin = Padding;
+        float topY = Padding;
+        float rightEdge = Size.X - rightMargin;
+        float availableContentWidth = rightEdge - (leftMargin + 58.0f);
 
-        _resizeHandle.Position = new Vector2(Size.X - _resizeHandle.Size.X - rightMargin, _resizeHandle.Position.Y);
-        _zoneLabel.Position = new Vector2(Size.X - _zoneLabel.Size.X - rightMargin, textRowY);
-        _exploreProgressBar.Position = new Vector2(Size.X - _exploreProgressBar.Size.X - rightMargin, barRowY);
-        _realmStageLabel.Position = new Vector2(_realmStageLabel.Position.X, bottomTextY);
-        _activityRateLabel.Position = new Vector2(_activityRateLabel.Position.X, bottomTextY);
+        float titleRailWidth = 58.0f;
+        float contentLeft = leftMargin + titleRailWidth;
 
-        _breakthroughButton.Position = new Vector2(_exploreProgressBar.Position.X - _breakthroughButton.Size.X - 10.0f, barRowY - 2.0f);
-        _cultivationProgressBar.Position = new Vector2(_breakthroughButton.Position.X - _cultivationProgressBar.Size.X - 10.0f, barRowY);
-        _cultivationLabel.Position = new Vector2(_cultivationProgressBar.Position.X, textRowY);
+        float optionHeight = 28.0f;
+        float barHeight = 24.0f;
+        float footerHeight = 18.0f;
+        float labelHeight = 20.0f;
+        float bottomBlockTop = Size.Y - Padding - (optionHeight + LineGap + labelHeight + LineGap + barHeight + LineGap + footerHeight);
+        bottomBlockTop = Mathf.Max(topY + 124.0f, bottomBlockTop);
+        float rootBottomInset = Mathf.Max(56.0f, Size.Y - bottomBlockTop);
 
-        float rightBlockStartX = _cultivationProgressBar.Position.X;
-        _battleTrack.Size = new Vector2(Mathf.Max(320.0f, rightBlockStartX - _battleTrack.Position.X - 12.0f), _battleTrack.Size.Y);
+        _rootStack.OffsetLeft = contentLeft;
+        _rootStack.OffsetTop = topY;
+        _rootStack.OffsetRight = -rightMargin;
+        _rootStack.OffsetBottom = -rootBottomInset;
 
-        float optionStartX = _battleTrack.Position.X + 8.0f;
-        if (_actionModeOptionButton != null)
+        float petHeight = _compactMode ? 0.0f : 96.0f;
+        _petStagePanel.CustomMinimumSize = new Vector2(0.0f, petHeight);
+        _compactPetBar.CustomMinimumSize = new Vector2(0.0f, 40.0f);
+
+        _dragHandle.Position = new Vector2(leftMargin, topY);
+        _bookButton.Position = new Vector2(leftMargin, topY + 62.0f);
+        _resizeHandle.Position = new Vector2(rightEdge - _resizeHandle.Size.X, topY);
+        _compactExpandButton.Position = new Vector2(rightEdge - _compactExpandButton.Size.X - 6.0f, _compactExpandButton.Position.Y);
+
+        float drawerStartY = topY + (_compactMode ? 44.0f : 96.0f) + SectionGap + 30.0f + SectionGap;
+        float drawerRightLimit = rightEdge - 2.0f;
+
+        float breakthroughWidth = _breakthroughButton.Size.X;
+        float exploreWidth = Mathf.Clamp(availableContentWidth * 0.18f, 110.0f, 240.0f);
+        float cultivationWidth = Mathf.Clamp(availableContentWidth * 0.22f, 130.0f, _cultivationProgressBar.Size.X);
+        float rightClusterWidth = cultivationWidth + 8.0f + breakthroughWidth + 8.0f + exploreWidth;
+        float leftMinReserve = 130.0f + 8.0f + 110.0f + 16.0f;
+        float rightMax = Mathf.Max(300.0f, availableContentWidth - leftMinReserve);
+        if (rightClusterWidth > rightMax)
         {
-            _actionModeOptionButton.Position = new Vector2(optionStartX, controlRowY);
+            float overflow = rightClusterWidth - rightMax;
+            float reduceCultivation = Mathf.Min(overflow * 0.55f, cultivationWidth - 130.0f);
+            cultivationWidth -= reduceCultivation;
+            overflow -= reduceCultivation;
+            if (overflow > 0.0f)
+            {
+                float reduceExplore = Mathf.Min(overflow, exploreWidth - 110.0f);
+                exploreWidth -= reduceExplore;
+            }
+            rightClusterWidth = cultivationWidth + 8.0f + breakthroughWidth + 8.0f + exploreWidth;
         }
+
+        float rightBlockStartX = rightEdge - (exploreWidth + 8.0f + breakthroughWidth + 8.0f + cultivationWidth);
+        float leftAvailWidth = Mathf.Max(240.0f, rightBlockStartX - contentLeft - 8.0f);
+        float levelWidth = Mathf.Clamp(leftAvailWidth * 0.60f, 130.0f, 260.0f);
+        float actionWidth = Mathf.Clamp(leftAvailWidth - levelWidth - 8.0f, 110.0f, 160.0f);
+        float activityWidth = Mathf.Max(180.0f, rightBlockStartX - (contentLeft + 110.0f) - 8.0f);
+
+        float optionRowY = bottomBlockTop;
+        float labelRowY = optionRowY + optionHeight + LineGap;
+        float barRowY = labelRowY + labelHeight + LineGap;
+        float footerRowY = barRowY + barHeight + LineGap;
 
         if (_levelOptionButton != null)
         {
-            float leftX = _battleTrack.Position.X + 8.0f;
-            _levelOptionButton.Position = new Vector2(leftX, textRowY - 2.0f);
+            _levelOptionButton.Size = new Vector2(levelWidth, _levelOptionButton.Size.Y);
+            _levelOptionButton.Position = new Vector2(contentLeft, optionRowY);
         }
 
-        if (_validationPanel != null)
+        if (_actionModeOptionButton != null)
         {
-            float validationWidth = _validationPanel.Size.X;
-            float x = Mathf.Max(_battleTrack.Position.X + 8.0f, rightBlockStartX - validationWidth - 10.0f);
-            _validationPanel.Position = new Vector2(x, controlRowY);
+            _actionModeOptionButton.Size = new Vector2(actionWidth, _actionModeOptionButton.Size.Y);
+            _actionModeOptionButton.Position = new Vector2(contentLeft + levelWidth + 8.0f, optionRowY);
+        }
+
+        _cultivationLabel.Position = new Vector2(rightBlockStartX, labelRowY);
+        _cultivationProgressBar.Position = new Vector2(rightBlockStartX, barRowY);
+        _breakthroughButton.Position = new Vector2(rightBlockStartX + cultivationWidth + 8.0f, barRowY - 2.0f);
+        _exploreProgressBar.Size = new Vector2(exploreWidth, _exploreProgressBar.Size.Y);
+        _exploreProgressBar.Position = new Vector2(rightEdge - exploreWidth, barRowY);
+
+        _zoneLabel.Position = new Vector2(rightEdge - _zoneLabel.Size.X, labelRowY);
+        _realmStageLabel.Position = new Vector2(contentLeft, footerRowY);
+        _activityRateLabel.Size = new Vector2(activityWidth, _activityRateLabel.Size.Y);
+        _activityRateLabel.Position = new Vector2(contentLeft + 110.0f, footerRowY);
+
+        float drawerWidth = Mathf.Max(360.0f, drawerRightLimit - contentLeft);
+        float drawerY = drawerStartY;
+        if (_battleTrack.Visible)
+        {
+            _battleTrack.Position = new Vector2(contentLeft, drawerY);
+            _battleTrack.Size = new Vector2(drawerWidth, _battleTrack.Size.Y);
+            drawerY += _battleTrack.Size.Y + LineGap;
+        }
+
+        if (_validationPanel != null && _validationPanel.Visible)
+        {
+            float validationWidth = Mathf.Clamp(drawerWidth * 0.68f, 320.0f, drawerWidth);
+            _validationPanel.Size = new Vector2(validationWidth, _validationPanel.Size.Y);
+            _validationPanel.Position = new Vector2(contentLeft, drawerY);
+            drawerY += _validationPanel.Size.Y + LineGap;
+        }
+
+        if (_moveDebugLabel != null && _moveDebugLabel.Visible)
+        {
+            _moveDebugLabel.Position = new Vector2(contentLeft, drawerY);
+            _moveDebugLabel.Size = new Vector2(drawerWidth, 64.0f);
         }
     }
 

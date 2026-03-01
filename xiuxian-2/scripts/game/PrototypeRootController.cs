@@ -277,6 +277,14 @@ namespace Xiuxian.Scripts.Game
             float mainBarX = config.GetValue("ui", "main_bar_x", _mainBar.Position.X).AsSingle();
             float mainBarWidth = config.GetValue("ui", "main_bar_width", _mainBar.Size.X).AsSingle();
             _mainBar.ApplyLayout(mainBarX, mainBarWidth);
+            bool compactMode = config.GetValue("ui", "main_ui_compact_mode", false).AsBool();
+            bool battleDrawerVisible = config.GetValue("ui", "drawer_battle_visible", false).AsBool();
+            bool validationDrawerVisible = config.GetValue("ui", "drawer_validation_visible", false).AsBool();
+            bool debugDrawerVisible = config.GetValue("ui", "drawer_debug_visible", false).AsBool();
+            _mainBar.SetCompactMode(compactMode);
+            _mainBar.SetDrawerVisible("battle", battleDrawerVisible);
+            _mainBar.SetDrawerVisible("validation", validationDrawerVisible);
+            _mainBar.SetDrawerVisible("debug", debugDrawerVisible);
 
             string activeLeftTab = config.GetValue("ui", "submenu_active_left_tab", "CultivationTab").AsString();
             string activeRightTab = config.GetValue("ui", "submenu_active_right_tab", "OnlineTab").AsString();
@@ -297,6 +305,10 @@ namespace Xiuxian.Scripts.Game
         {
             config.SetValue("ui", "main_bar_x", _mainBar.Position.X);
             config.SetValue("ui", "main_bar_width", _mainBar.Size.X);
+            config.SetValue("ui", "main_ui_compact_mode", _mainBar.IsCompactMode());
+            config.SetValue("ui", "drawer_battle_visible", _mainBar.IsDrawerVisible("battle"));
+            config.SetValue("ui", "drawer_validation_visible", _mainBar.IsDrawerVisible("validation"));
+            config.SetValue("ui", "drawer_debug_visible", _mainBar.IsDrawerVisible("debug"));
             config.SetValue("ui", "submenu_visible", _submenu.Visible);
             config.SetValue("ui", "submenu_active_left_tab", _bookTabs.ActiveLeftTabName);
             config.SetValue("ui", "submenu_active_right_tab", _bookTabs.ActiveRightTabName);

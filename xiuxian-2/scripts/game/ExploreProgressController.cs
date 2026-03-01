@@ -20,6 +20,7 @@ namespace Xiuxian.Scripts.Game
         [Export] public NodePath ActivityRateLabelPath = "../MainBarWindow/Chrome/ActivityRateLabel";
         [Export] public NodePath MoveDebugLabelPath = "../MainBarWindow/Chrome/MoveDebugLabel";
         [Export] public NodePath RealmStageLabelPath = "../MainBarWindow/Chrome/RealmStageLabel";
+        [Export] public NodePath PetStatusChipPath = "../MainBarWindow/Chrome/RootStack/PetStagePanel/PetStatusChip";
 
         [Export] public NodePath BattleInfoLabelPath = "../MainBarWindow/Chrome/BattleTrack/BattleInfoLabel";
         [Export] public NodePath RoundInfoLabelPath = "../MainBarWindow/Chrome/BattleTrack/RoundInfoLabel";
@@ -42,6 +43,7 @@ namespace Xiuxian.Scripts.Game
         [Export] public NodePath ResourceWalletPath = "/root/ResourceWalletState";
         [Export] public NodePath LevelConfigLoaderPath = "/root/LevelConfigLoader";
         [Export] public NodePath ActionStatePath = "/root/PlayerActionState";
+        [Export] public NodePath MainBarLayoutPath = "../MainBarWindow";
 
         // Explore progress is input-event driven (percent per input event), not AP-driven.
         [Export] public float ProgressPerInput = 0.02f;
@@ -61,6 +63,7 @@ namespace Xiuxian.Scripts.Game
         private Label _activityRateLabel = null!;
         private Label? _moveDebugLabel;
         private Label _realmStageLabel = null!;
+        private Label? _petStatusChip;
         private Label _battleInfoLabel = null!;
         private Label _roundInfoLabel = null!;
         private Label _playerMarker = null!;
@@ -88,6 +91,7 @@ namespace Xiuxian.Scripts.Game
         private ResourceWalletState? _resourceWalletState;
         private LevelConfigLoader? _levelConfigLoader;
         private PlayerActionState? _actionState;
+        private MainBarLayoutController? _mainBarLayout;
 
         private string _currentZone = UiText.DefaultZoneName;
         private float _exploreProgress;
@@ -122,6 +126,8 @@ namespace Xiuxian.Scripts.Game
         private bool _validationOnlyActiveLevel;
         private bool _syncingActionModeOption;
         private bool _syncingLevelOption;
+        private bool _battleDrawerVisibleBeforeBattle;
+        private bool _battleDrawerPinnedByBattle;
         private string _lastDropSummary = "none";
         private string _lastSimulationSummary = "no simulation";
         private string _simulationLevelFilterId = "";
@@ -138,6 +144,7 @@ namespace Xiuxian.Scripts.Game
             _activityRateLabel = GetNode<Label>(ActivityRateLabelPath);
             _moveDebugLabel = GetNodeOrNull<Label>(MoveDebugLabelPath);
             _realmStageLabel = GetNode<Label>(RealmStageLabelPath);
+            _petStatusChip = GetNodeOrNull<Label>(PetStatusChipPath);
             _battleInfoLabel = GetNode<Label>(BattleInfoLabelPath);
             _roundInfoLabel = GetNode<Label>(RoundInfoLabelPath);
             _playerMarker = GetNode<Label>(PlayerMarkerPath);
@@ -168,6 +175,7 @@ namespace Xiuxian.Scripts.Game
             _resourceWalletState = GetNodeOrNull<ResourceWalletState>(ResourceWalletPath);
             _levelConfigLoader = GetNodeOrNull<LevelConfigLoader>(LevelConfigLoaderPath);
             _actionState = GetNodeOrNull<PlayerActionState>(ActionStatePath);
+            _mainBarLayout = GetNodeOrNull<MainBarLayoutController>(MainBarLayoutPath);
 
             if (_activityState == null || _monsterMarkers.Count == 0)
             {
@@ -205,6 +213,8 @@ namespace Xiuxian.Scripts.Game
             ApplyGlobalDebugOverlayVisibility();
             RefreshActionModeOptionButton();
             RefreshLevelOptionButton();
+            SyncUiByRuntimeState();
+            RefreshPetStatusChip();
 
             if (_playerProgressState != null)
             {
@@ -256,6 +266,7 @@ namespace Xiuxian.Scripts.Game
                 {
                     _debugPanelVisible = !_debugPanelVisible;
                     _debugPanelLabel.Visible = _debugPanelVisible;
+                    _mainBarLayout?.SetDrawerVisible("debug", _debugPanelVisible);
                     RefreshDebugPanel();
                     RefreshValidationPanel();
                 }
@@ -302,6 +313,13 @@ namespace Xiuxian.Scripts.Game
                 {
                     CycleSimulationMonsterFilter();
                     RefreshDebugPanel();
+                }
+                else if (keyEvent.Keycode == Key.F3)
+                {
+                    if (_mainBarLayout != null)
+                    {
+                        _mainBarLayout.SetCompactMode(!_mainBarLayout.IsCompactMode());
+                    }
                 }
                 else if (keyEvent.Keycode == Key.F11)
                 {
@@ -454,6 +472,7 @@ namespace Xiuxian.Scripts.Game
 
             RefreshActionModeOptionButton();
             RefreshDebugPanel();
+            RefreshPetStatusChip();
         }
 
         private void ConfigureActionModeOptionButton()
@@ -800,7 +819,8 @@ namespace Xiuxian.Scripts.Game
         {
             if (_moveDebugLabel != null)
             {
-                _moveDebugLabel.Visible = _globalDebugOverlayEnabled;
+                bool drawerVisible = _mainBarLayout == null || _mainBarLayout.IsDrawerVisible("debug");
+                _moveDebugLabel.Visible = _globalDebugOverlayEnabled && drawerVisible;
             }
         }
 
@@ -887,6 +907,12 @@ namespace Xiuxian.Scripts.Game
             }
 
             _inBattle = true;
+            if (_mainBarLayout != null)
+            {
+                _battleDrawerVisibleBeforeBattle = _mainBarLayout.IsDrawerVisible("battle");
+                _battleDrawerPinnedByBattle = true;
+                _mainBarLayout.SetDrawerVisible("battle", true);
+            }
             _battleMonsterIndex = candidate;
             _battleRoundCounter = 0;
             _pendingBattleInputEvents = 0;
@@ -901,6 +927,7 @@ namespace Xiuxian.Scripts.Game
             UpdateHpLabels();
             RefreshActorSlots();
             RefreshMoveDebugLabel();
+            RefreshPetStatusChip();
         }
 
         private int FindFrontMonsterIndex()
@@ -966,6 +993,7 @@ namespace Xiuxian.Scripts.Game
             RefreshActorSlots();
             RefreshMoveDebugLabel();
             RefreshDebugPanel();
+            RefreshPetStatusChip();
         }
 
         private void HandleBattleDefeat()
@@ -984,6 +1012,7 @@ namespace Xiuxian.Scripts.Game
                 _levelConfigLoader.TrySetActiveLevel(levelId);
             }
 
+            RestoreBattleDrawerAfterBattle();
             ApplyLevelConfig();
             _zoneLabel.Text = _currentZone;
             ResetTrackVisual();
@@ -995,6 +1024,7 @@ namespace Xiuxian.Scripts.Game
             RefreshActorSlots();
             RefreshMoveDebugLabel();
             RefreshDebugPanel();
+            RefreshPetStatusChip();
         }
 
         private void CompleteBattle()
@@ -1027,10 +1057,23 @@ namespace Xiuxian.Scripts.Game
             _battleMonsterId = "";
             _pendingBattleInputEvents = 0;
             _enemyHpLabel.Visible = false;
+            RestoreBattleDrawerAfterBattle();
             UpdateHpLabels();
             RefreshActorSlots();
             RefreshMoveDebugLabel();
             RefreshDebugPanel();
+            RefreshPetStatusChip();
+        }
+
+        private void RestoreBattleDrawerAfterBattle()
+        {
+            if (_mainBarLayout == null || !_battleDrawerPinnedByBattle)
+            {
+                return;
+            }
+
+            _mainBarLayout.SetDrawerVisible("battle", _battleDrawerVisibleBeforeBattle);
+            _battleDrawerPinnedByBattle = false;
         }
 
         private void ResetTrackVisual()
@@ -1426,6 +1469,7 @@ namespace Xiuxian.Scripts.Game
 
             if (_inBattle)
             {
+                _mainBarLayout?.SetDrawerVisible("battle", true);
                 if (_levelConfigLoader != null && !string.IsNullOrEmpty(_battleMonsterId))
                 {
                     int savedEnemyHp = _enemyHp;
@@ -1449,6 +1493,7 @@ namespace Xiuxian.Scripts.Game
             RefreshActorSlots();
             RefreshMoveDebugLabel();
             RefreshDebugPanel();
+            SyncUiByRuntimeState();
         }
 
         private void AssignMonsterToMarker(int markerIndex)
@@ -1532,7 +1577,41 @@ namespace Xiuxian.Scripts.Game
                 : $"进度未满，还需 {Mathf.Max(0.0f, (float)(required - _playerProgressState.RealmExp)):0.0}";
             if (_cultivationLabel != null)
             {
-                _cultivationLabel.Text = $"修炼 {_playerProgressState.RealmExp:0}/{required:0}";
+                _cultivationLabel.Text = $"修炼 {_playerProgressState.RealmExp:0}/{required:0} | 每输入+0.35";
+            }
+        }
+
+        private void SyncUiByRuntimeState()
+        {
+            if (_mainBarLayout == null)
+            {
+                return;
+            }
+
+            if (_inBattle)
+            {
+                _mainBarLayout.SetDrawerVisible("battle", true);
+            }
+        }
+
+        private void RefreshPetStatusChip()
+        {
+            if (_petStatusChip == null)
+            {
+                return;
+            }
+
+            if (_inBattle)
+            {
+                _petStatusChip.Text = $"桌宠状态：战斗中({_battleMonsterName})";
+            }
+            else if (!IsDungeonMode())
+            {
+                _petStatusChip.Text = "桌宠状态：修炼中";
+            }
+            else
+            {
+                _petStatusChip.Text = "桌宠状态：探索中";
             }
         }
 
@@ -1605,8 +1684,9 @@ namespace Xiuxian.Scripts.Game
                 return;
             }
 
-            _validationPanel.Visible = _validationPanelEnabled;
-            if (!_validationPanelEnabled)
+            bool drawerVisible = _mainBarLayout == null || _mainBarLayout.IsDrawerVisible("validation");
+            _validationPanel.Visible = _validationPanelEnabled && drawerVisible;
+            if (!_validationPanelEnabled || !drawerVisible)
             {
                 return;
             }
