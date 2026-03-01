@@ -49,12 +49,14 @@ public partial class BookTabsController : Control
 
     private OptionButton _resolutionOption = null!;
     private CheckButton _showControlMarkerCheck = null!;
+    private CheckButton _showValidationPanelCheck = null!;
     private Button _openLogFolderButton = null!;
     private OptionButton _gameScaleOption = null!;
     private OptionButton _uiScaleOption = null!;
     private OptionButton _autoSaveIntervalOption = null!;
     private CheckButton _cloudSyncCheck = null!;
     private CheckButton _milestoneTipsCheck = null!;
+    private CheckButton _globalDebugOverlayCheck = null!;
 
     private Tween? _leftTween;
     private InputActivityState? _activityState;
@@ -81,11 +83,13 @@ public partial class BookTabsController : Control
         ["max_fps"] = 60,
         ["resolution"] = "1600x900",
         ["show_control_markers"] = true,
+        ["show_validation_panel"] = true,
         ["game_scale"] = 1.33,
         ["ui_scale"] = 1.0,
         ["auto_save_interval_sec"] = 10,
         ["cloud_sync"] = false,
         ["milestone_tips"] = true,
+        ["global_debug_overlay"] = false,
     };
 
     public override void _Ready()
@@ -206,9 +210,16 @@ public partial class BookTabsController : Control
             return;
         }
 
+        // Leaving settings/right-page mode should immediately return to left tabs.
+        if (ActiveRightTabName == "SettingsTab")
+        {
+            ActiveRightTabName = "OnlineTab";
+        }
+
         ActiveLeftTabName = tabName;
         _isShowingRightTab = false;
         SyncButtons("TopStrip/LeftTabs", _leftTabContentMap.Keys, ActiveLeftTabName);
+        SyncButtons("TopStrip/RightTabs", _rightTabContentMap.Keys, ActiveRightTabName);
         RefreshCurrentPageContent();
         EmitSignal(SignalName.ActiveTabsChanged, ActiveLeftTabName, ActiveRightTabName);
     }
@@ -418,6 +429,7 @@ public partial class BookTabsController : Control
     {
         _resolutionOption = AddOptionRow(root, UiText.Resolution, new[] { "1280x720", "1600x900", "1920x1080", "2560x1440" });
         _showControlMarkerCheck = AddCheckRow(root, UiText.ShowControlMarkers);
+        _showValidationPanelCheck = AddCheckRow(root, UiText.ShowValidationPanel);
 
         HBoxContainer logRow = new();
         logRow.AddThemeConstantOverride("separation", 8);
@@ -436,6 +448,7 @@ public partial class BookTabsController : Control
 
         _resolutionOption.ItemSelected += _ => OnResolutionChanged();
         _showControlMarkerCheck.Toggled += value => OnSettingChanged("show_control_markers", value);
+        _showValidationPanelCheck.Toggled += value => OnSettingChanged("show_validation_panel", value);
         _gameScaleOption.ItemSelected += _ => OnGameScaleChanged();
         _uiScaleOption.ItemSelected += _ => OnUiScaleChanged();
     }
@@ -445,6 +458,7 @@ public partial class BookTabsController : Control
         _autoSaveIntervalOption = AddOptionRow(root, UiText.AutoSaveInterval, new[] { "5 秒", "10 秒", "30 秒", "60 秒" });
         _cloudSyncCheck = AddCheckRow(root, UiText.CloudSync);
         _milestoneTipsCheck = AddCheckRow(root, UiText.MilestoneTips);
+        _globalDebugOverlayCheck = AddCheckRow(root, UiText.GlobalDebugOverlay);
 
         RichTextLabel hint = new();
         hint.FitContent = true;
@@ -455,6 +469,7 @@ public partial class BookTabsController : Control
         _autoSaveIntervalOption.ItemSelected += _ => OnAutoSaveIntervalChanged();
         _cloudSyncCheck.Toggled += value => OnSettingChanged("cloud_sync", value);
         _milestoneTipsCheck.Toggled += value => OnSettingChanged("milestone_tips", value);
+        _globalDebugOverlayCheck.Toggled += value => OnSettingChanged("global_debug_overlay", value);
     }
 
     private CheckButton AddCheckRow(VBoxContainer parent, string title)
@@ -531,8 +546,10 @@ public partial class BookTabsController : Control
         _handwritingCheck.ButtonPressed = _settings["handwriting_support"].AsBool();
         _vsyncCheck.ButtonPressed = _settings["vsync"].AsBool();
         _showControlMarkerCheck.ButtonPressed = _settings["show_control_markers"].AsBool();
+        _showValidationPanelCheck.ButtonPressed = _settings["show_validation_panel"].AsBool();
         _cloudSyncCheck.ButtonPressed = _settings["cloud_sync"].AsBool();
         _milestoneTipsCheck.ButtonPressed = _settings["milestone_tips"].AsBool();
+        _globalDebugOverlayCheck.ButtonPressed = _settings["global_debug_overlay"].AsBool();
 
         _fpsOption.Selected = _settings["max_fps"].AsInt32() switch
         {
@@ -580,11 +597,13 @@ public partial class BookTabsController : Control
         _settings["max_fps"] = 60;
         _settings["resolution"] = "1600x900";
         _settings["show_control_markers"] = true;
+        _settings["show_validation_panel"] = true;
         _settings["game_scale"] = 1.33;
         _settings["ui_scale"] = 1.0;
         _settings["auto_save_interval_sec"] = 10;
         _settings["cloud_sync"] = false;
         _settings["milestone_tips"] = true;
+        _settings["global_debug_overlay"] = false;
 
         ApplySettingsRuntime();
         UpdateSettingsControlsFromState();

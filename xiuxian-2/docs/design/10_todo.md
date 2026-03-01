@@ -60,3 +60,13 @@
 - [x] 保底与日/小时上限规则。
 - [x] 子菜单改为单页全宽内容区，左上角关闭按钮。
 - [x] UI 文案收口到 `scripts/ui/UiText.cs`。
+
+## 问题复盘（避免复发）
+- [x] Godot 场景文件 BOM 触发解析失败（2026-03-01）
+问题现象：`res://scenes/ui/MainBarWindow.tscn:1 Parse Error: Expected '['`，并连锁出现 `Failed loading resource` 与 `Node not found`。
+根因：`.tscn` 被保存为 `UTF-8 with BOM`，Godot 文本场景解析器在首字符处失败。
+规避规则：
+- `.tscn/.tres/.gdshader` 统一使用 `UTF-8 (no BOM)`。
+- 修改场景文件后，优先检查文件头字节，禁止出现 `EF BB BF`。
+- 场景文本属性必须是完整引号行（`text = "..."`），禁止出现缺失结尾引号的半行文本。
+- 提交前执行一次场景快速自检（至少打开主场景并确认无 Parse Error）。

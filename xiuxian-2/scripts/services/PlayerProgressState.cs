@@ -17,8 +17,10 @@ namespace Xiuxian.Scripts.Services
         public int RealmLevel { get; private set; } = 1;
         public double RealmExp { get; private set; }
         public int PetMood { get; private set; } = 60;
+        [Export] public bool AutoBreakthrough = false;
 
         public double RealmExpRequired => GetExpRequired(RealmLevel);
+        public bool CanBreakthrough => RealmExp >= RealmExpRequired;
 
         public void AddRealmExp(double amount)
         {
@@ -28,22 +30,37 @@ namespace Xiuxian.Scripts.Services
             }
 
             RealmExp += amount;
+
+            if (!AutoBreakthrough)
+            {
+                EmitSignal(SignalName.RealmProgressChanged, RealmLevel, RealmExp, RealmExpRequired);
+                return;
+            }
+
             bool leveled = false;
-
-            while (RealmExp >= RealmExpRequired)
+            while (TryBreakthrough())
             {
-                RealmExp -= RealmExpRequired;
-                RealmLevel++;
                 leveled = true;
-                EmitSignal(SignalName.RealmLevelUp, RealmLevel);
             }
-
-            EmitSignal(SignalName.RealmProgressChanged, RealmLevel, RealmExp, RealmExpRequired);
-
-            if (leveled)
+            if (!leveled)
             {
-                GD.Print($"PlayerProgressState: realm level up -> {RealmLevel}");
+                EmitSignal(SignalName.RealmProgressChanged, RealmLevel, RealmExp, RealmExpRequired);
             }
+        }
+
+        public bool TryBreakthrough()
+        {
+            if (!CanBreakthrough)
+            {
+                return false;
+            }
+
+            RealmExp -= RealmExpRequired;
+            RealmLevel++;
+            EmitSignal(SignalName.RealmLevelUp, RealmLevel);
+            EmitSignal(SignalName.RealmProgressChanged, RealmLevel, RealmExp, RealmExpRequired);
+            GD.Print($"PlayerProgressState: realm level up -> {RealmLevel}");
+            return true;
         }
 
         public void SetPetMood(int mood)

@@ -24,6 +24,7 @@ namespace Xiuxian.Scripts.Game
         private BackpackState? _backpackState;
         private ResourceWalletState? _resourceWalletState;
         private PlayerProgressState? _playerProgressState;
+        private PlayerActionState? _playerActionState;
         private LevelConfigLoader? _levelConfigLoader;
         private ExploreProgressController? _exploreProgressController;
         private CloudSaveSyncService? _cloudSaveSyncService;
@@ -45,6 +46,7 @@ namespace Xiuxian.Scripts.Game
             _backpackState = GetNodeOrNull<BackpackState>("/root/BackpackState");
             _resourceWalletState = GetNodeOrNull<ResourceWalletState>("/root/ResourceWalletState");
             _playerProgressState = GetNodeOrNull<PlayerProgressState>("/root/PlayerProgressState");
+            _playerActionState = GetNodeOrNull<PlayerActionState>("/root/PlayerActionState");
             _levelConfigLoader = GetNodeOrNull<LevelConfigLoader>("/root/LevelConfigLoader");
             _exploreProgressController = GetNodeOrNull<ExploreProgressController>("ExploreProgressController");
             _cloudSaveSyncService = GetNodeOrNull<CloudSaveSyncService>("/root/CloudSaveSyncService");
@@ -61,6 +63,7 @@ namespace Xiuxian.Scripts.Game
             if (_activityState != null)
             {
                 _activityState.ActivityTick += OnActivityTick;
+                _activityState.InputBatchTick += OnInputBatchTick;
             }
             if (_resourceWalletState != null)
             {
@@ -108,6 +111,7 @@ namespace Xiuxian.Scripts.Game
             if (_activityState != null)
             {
                 _activityState.ActivityTick -= OnActivityTick;
+                _activityState.InputBatchTick -= OnInputBatchTick;
             }
             if (_resourceWalletState != null)
             {
@@ -154,6 +158,14 @@ namespace Xiuxian.Scripts.Game
             }
         }
 
+        private void OnInputBatchTick(int inputEventsThisBatch, double apFinal)
+        {
+            if (inputEventsThisBatch > 0)
+            {
+                MarkDirty();
+            }
+        }
+
         private void OnEconomyStateChanged(double lingqi, double insight, double petAffinity)
         {
             MarkDirty();
@@ -191,6 +203,7 @@ namespace Xiuxian.Scripts.Game
             WriteBackpackState(config);
             WriteResourceState(config);
             WritePlayerProgressState(config);
+            WriteActionModeState(config);
             WriteExploreRuntimeState(config);
             WriteLevelRuntimeState(config);
             WriteSystemSettings(config);
@@ -219,6 +232,7 @@ namespace Xiuxian.Scripts.Game
             ReadBackpackState(config);
             ReadResourceState(config);
             ReadPlayerProgressState(config);
+            ReadActionModeState(config);
             ReadLevelRuntimeState(config);
             ReadExploreRuntimeState(config);
             ReadSystemSettings(config);
@@ -233,6 +247,7 @@ namespace Xiuxian.Scripts.Game
                     ReadBackpackState(refreshed);
                     ReadResourceState(refreshed);
                     ReadPlayerProgressState(refreshed);
+                    ReadActionModeState(refreshed);
                     ReadLevelRuntimeState(refreshed);
                     ReadExploreRuntimeState(refreshed);
                     ReadSystemSettings(refreshed);
@@ -391,6 +406,30 @@ namespace Xiuxian.Scripts.Game
             config.SetValue("progress", "player", _playerProgressState.ToDictionary());
         }
 
+        private void ReadActionModeState(ConfigFile config)
+        {
+            if (_playerActionState == null)
+            {
+                return;
+            }
+
+            Variant modeData = config.GetValue("action", "mode", new Godot.Collections.Dictionary<string, Variant>());
+            if (modeData.VariantType == Variant.Type.Dictionary)
+            {
+                _playerActionState.FromDictionary((Godot.Collections.Dictionary<string, Variant>)modeData);
+            }
+        }
+
+        private void WriteActionModeState(ConfigFile config)
+        {
+            if (_playerActionState == null)
+            {
+                return;
+            }
+
+            config.SetValue("action", "mode", _playerActionState.ToDictionary());
+        }
+
         private void ReadExploreRuntimeState(ConfigFile config)
         {
             if (_exploreProgressController == null)
@@ -464,6 +503,10 @@ namespace Xiuxian.Scripts.Game
             var dict = _bookTabs.ToSystemSettingsDictionary();
             _cloudSyncEnabled = dict.ContainsKey("cloud_sync") && dict["cloud_sync"].AsBool();
             _activitySaveMarkIntervalSeconds = ReadActivitySaveInterval(dict);
+            bool showValidationPanel = !dict.ContainsKey("show_validation_panel") || dict["show_validation_panel"].AsBool();
+            _exploreProgressController?.SetValidationPanelEnabled(showValidationPanel);
+            bool globalDebugOverlay = dict.ContainsKey("global_debug_overlay") && dict["global_debug_overlay"].AsBool();
+            _exploreProgressController?.SetGlobalDebugOverlayEnabled(globalDebugOverlay);
         }
 
         private static double ReadActivitySaveInterval(Godot.Collections.Dictionary<string, Variant> dict)

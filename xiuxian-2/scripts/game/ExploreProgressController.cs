@@ -12,29 +12,36 @@ namespace Xiuxian.Scripts.Game
     /// </summary>
     public partial class ExploreProgressController : Node
     {
-        [Export] public NodePath ProgressBarPath = "MainBarWindow/Chrome/ExploreProgressBar";
-        [Export] public NodePath ZoneLabelPath = "MainBarWindow/Chrome/ZoneLabel";
-        [Export] public NodePath ActivityRateLabelPath = "MainBarWindow/Chrome/ActivityRateLabel";
-        [Export] public NodePath RealmStageLabelPath = "MainBarWindow/Chrome/RealmStageLabel";
+        [Export] public NodePath ProgressBarPath = "../MainBarWindow/Chrome/ExploreProgressBar";
+        [Export] public NodePath CultivationProgressBarPath = "../MainBarWindow/Chrome/CultivationProgressBar";
+        [Export] public NodePath BreakthroughButtonPath = "../MainBarWindow/Chrome/BreakthroughButton";
+        [Export] public NodePath CultivationLabelPath = "../MainBarWindow/Chrome/CultivationLabel";
+        [Export] public NodePath ZoneLabelPath = "../MainBarWindow/Chrome/ZoneLabel";
+        [Export] public NodePath ActivityRateLabelPath = "../MainBarWindow/Chrome/ActivityRateLabel";
+        [Export] public NodePath MoveDebugLabelPath = "../MainBarWindow/Chrome/MoveDebugLabel";
+        [Export] public NodePath RealmStageLabelPath = "../MainBarWindow/Chrome/RealmStageLabel";
 
-        [Export] public NodePath BattleInfoLabelPath = "MainBarWindow/Chrome/BattleTrack/BattleInfoLabel";
-        [Export] public NodePath RoundInfoLabelPath = "MainBarWindow/Chrome/BattleTrack/RoundInfoLabel";
-        [Export] public NodePath PlayerMarkerPath = "MainBarWindow/Chrome/BattleTrack/PlayerMarker";
-        [Export] public NodePath PlayerHpLabelPath = "MainBarWindow/Chrome/BattleTrack/PlayerHpLabel";
-        [Export] public NodePath EnemyHpLabelPath = "MainBarWindow/Chrome/BattleTrack/EnemyHpLabel";
-        [Export] public NodePath ValidationPanelPath = "MainBarWindow/Chrome/ConfigValidationPanel";
-        [Export] public NodePath ValidationTitleLabelPath = "MainBarWindow/Chrome/ConfigValidationPanel/TitleLabel";
-        [Export] public NodePath ValidationBodyLabelPath = "MainBarWindow/Chrome/ConfigValidationPanel/BodyLabel";
-        [Export] public NodePath PlayerSlotTexturePath = "MainBarWindow/Chrome/BattleTrack/PlayerSlotTexture";
-        [Export] public NodePath PlayerSlotLabelPath = "MainBarWindow/Chrome/BattleTrack/PlayerSlotLabel";
-        [Export] public NodePath EnemySlotTexturePath = "MainBarWindow/Chrome/BattleTrack/EnemySlotTexture";
-        [Export] public NodePath EnemySlotLabelPath = "MainBarWindow/Chrome/BattleTrack/EnemySlotLabel";
+        [Export] public NodePath BattleInfoLabelPath = "../MainBarWindow/Chrome/BattleTrack/BattleInfoLabel";
+        [Export] public NodePath RoundInfoLabelPath = "../MainBarWindow/Chrome/BattleTrack/RoundInfoLabel";
+        [Export] public NodePath PlayerMarkerPath = "../MainBarWindow/Chrome/BattleTrack/PlayerMarker";
+        [Export] public NodePath PlayerHpLabelPath = "../MainBarWindow/Chrome/BattleTrack/PlayerHpLabel";
+        [Export] public NodePath EnemyHpLabelPath = "../MainBarWindow/Chrome/BattleTrack/EnemyHpLabel";
+        [Export] public NodePath ValidationPanelPath = "../MainBarWindow/Chrome/ConfigValidationPanel";
+        [Export] public NodePath ValidationTitleLabelPath = "../MainBarWindow/Chrome/ConfigValidationPanel/TitleLabel";
+        [Export] public NodePath ValidationBodyLabelPath = "../MainBarWindow/Chrome/ConfigValidationPanel/BodyLabel";
+        [Export] public NodePath ActionModeOptionButtonPath = "../MainBarWindow/Chrome/ActionModeOptionButton";
+        [Export] public NodePath LevelOptionButtonPath = "../MainBarWindow/Chrome/LevelOptionButton";
+        [Export] public NodePath PlayerSlotTexturePath = "../MainBarWindow/Chrome/BattleTrack/PlayerSlotTexture";
+        [Export] public NodePath PlayerSlotLabelPath = "../MainBarWindow/Chrome/BattleTrack/PlayerSlotLabel";
+        [Export] public NodePath EnemySlotTexturePath = "../MainBarWindow/Chrome/BattleTrack/EnemySlotTexture";
+        [Export] public NodePath EnemySlotLabelPath = "../MainBarWindow/Chrome/BattleTrack/EnemySlotLabel";
 
         [Export] public NodePath ActivityStatePath = "/root/InputActivityState";
         [Export] public NodePath BackpackStatePath = "/root/BackpackState";
         [Export] public NodePath PlayerProgressPath = "/root/PlayerProgressState";
         [Export] public NodePath ResourceWalletPath = "/root/ResourceWalletState";
         [Export] public NodePath LevelConfigLoaderPath = "/root/LevelConfigLoader";
+        [Export] public NodePath ActionStatePath = "/root/PlayerActionState";
 
         // Explore progress is input-event driven (percent per input event), not AP-driven.
         [Export] public float ProgressPerInput = 0.02f;
@@ -47,8 +54,12 @@ namespace Xiuxian.Scripts.Game
         [Export] public float BattleTriggerX = 220.0f;
 
         private ProgressBar _progressBar = null!;
+        private ProgressBar? _cultivationProgressBar;
+        private Button? _breakthroughButton;
+        private Label? _cultivationLabel;
         private Label _zoneLabel = null!;
         private Label _activityRateLabel = null!;
+        private Label? _moveDebugLabel;
         private Label _realmStageLabel = null!;
         private Label _battleInfoLabel = null!;
         private Label _roundInfoLabel = null!;
@@ -59,24 +70,30 @@ namespace Xiuxian.Scripts.Game
         private Panel? _validationPanel;
         private Label? _validationTitleLabel;
         private Label? _validationBodyLabel;
+        private OptionButton? _actionModeOptionButton;
+        private OptionButton? _levelOptionButton;
         private TextureRect? _playerSlotTexture;
         private Label? _playerSlotLabel;
         private TextureRect? _enemySlotTexture;
         private Label? _enemySlotLabel;
         private readonly List<Label> _monsterMarkers = new();
         private readonly List<string> _monsterMarkerIds = new();
+        private readonly List<TextureRect> _monsterSlots = new();
+        private readonly List<int> _monsterMoveInputPending = new();
+        private readonly List<int> _monsterMoveInputThreshold = new();
 
         private InputActivityState? _activityState;
         private BackpackState? _backpackState;
         private PlayerProgressState? _playerProgressState;
         private ResourceWalletState? _resourceWalletState;
         private LevelConfigLoader? _levelConfigLoader;
+        private PlayerActionState? _actionState;
 
         private string _currentZone = UiText.DefaultZoneName;
         private float _exploreProgress;
         private int _moveFrameCounter;
+        private int _queueMoveInputPending;
         private int _battleRoundCounter;
-        private int _pendingExploreInputEvents;
         private int _pendingBattleInputEvents;
         private bool _inBattle;
         private int _battleMonsterIndex = -1;
@@ -99,8 +116,12 @@ namespace Xiuxian.Scripts.Game
         private Texture2D? _enemySlotDefaultTexture;
         private double _enemyVisualTime;
         private bool _debugPanelVisible;
+        private bool _globalDebugOverlayEnabled;
+        private bool _validationPanelEnabled = true;
         private int _validationScopeFilterIndex;
         private bool _validationOnlyActiveLevel;
+        private bool _syncingActionModeOption;
+        private bool _syncingLevelOption;
         private string _lastDropSummary = "none";
         private string _lastSimulationSummary = "no simulation";
         private string _simulationLevelFilterId = "";
@@ -110,8 +131,12 @@ namespace Xiuxian.Scripts.Game
         public override void _Ready()
         {
             _progressBar = GetNode<ProgressBar>(ProgressBarPath);
+            _cultivationProgressBar = GetNodeOrNull<ProgressBar>(CultivationProgressBarPath);
+            _breakthroughButton = GetNodeOrNull<Button>(BreakthroughButtonPath);
+            _cultivationLabel = GetNodeOrNull<Label>(CultivationLabelPath);
             _zoneLabel = GetNode<Label>(ZoneLabelPath);
             _activityRateLabel = GetNode<Label>(ActivityRateLabelPath);
+            _moveDebugLabel = GetNodeOrNull<Label>(MoveDebugLabelPath);
             _realmStageLabel = GetNode<Label>(RealmStageLabelPath);
             _battleInfoLabel = GetNode<Label>(BattleInfoLabelPath);
             _roundInfoLabel = GetNode<Label>(RoundInfoLabelPath);
@@ -121,6 +146,8 @@ namespace Xiuxian.Scripts.Game
             _validationPanel = GetNodeOrNull<Panel>(ValidationPanelPath);
             _validationTitleLabel = GetNodeOrNull<Label>(ValidationTitleLabelPath);
             _validationBodyLabel = GetNodeOrNull<Label>(ValidationBodyLabelPath);
+            _actionModeOptionButton = GetNodeOrNull<OptionButton>(ActionModeOptionButtonPath);
+            _levelOptionButton = GetNodeOrNull<OptionButton>(LevelOptionButtonPath);
             _playerSlotTexture = GetNodeOrNull<TextureRect>(PlayerSlotTexturePath);
             _playerSlotLabel = GetNodeOrNull<Label>(PlayerSlotLabelPath);
             _enemySlotTexture = GetNodeOrNull<TextureRect>(EnemySlotTexturePath);
@@ -133,12 +160,14 @@ namespace Xiuxian.Scripts.Game
             EnsureDebugPanel();
 
             CacheMonsterMarkers();
+            CacheMonsterSlots();
 
             _activityState = GetNodeOrNull<InputActivityState>(ActivityStatePath);
             _backpackState = GetNodeOrNull<BackpackState>(BackpackStatePath);
             _playerProgressState = GetNodeOrNull<PlayerProgressState>(PlayerProgressPath);
             _resourceWalletState = GetNodeOrNull<ResourceWalletState>(ResourceWalletPath);
             _levelConfigLoader = GetNodeOrNull<LevelConfigLoader>(LevelConfigLoaderPath);
+            _actionState = GetNodeOrNull<PlayerActionState>(ActionStatePath);
 
             if (_activityState == null || _monsterMarkers.Count == 0)
             {
@@ -156,15 +185,34 @@ namespace Xiuxian.Scripts.Game
             _zoneLabel.Text = _currentZone;
             _progressBar.MaxValue = MaxProgress;
             _progressBar.Value = _exploreProgress;
+            if (_cultivationProgressBar != null)
+            {
+                _cultivationProgressBar.MaxValue = 100.0;
+            }
+            if (_breakthroughButton != null)
+            {
+                _breakthroughButton.Pressed += OnBreakthroughPressed;
+            }
+            ConfigureActionModeOptionButton();
+            ConfigureLevelOptionButton();
             _simulationLevelFilterId = _levelConfigLoader?.ActiveLevelId ?? "";
             UpdateRealmStageLabel();
+            RefreshCultivationPanel();
             ResetTrackVisual();
             RefreshDebugPanel();
             RefreshValidationPanel();
+            RefreshMoveDebugLabel();
+            ApplyGlobalDebugOverlayVisibility();
+            RefreshActionModeOptionButton();
+            RefreshLevelOptionButton();
 
             if (_playerProgressState != null)
             {
                 _playerProgressState.RealmProgressChanged += OnRealmProgressChanged;
+            }
+            if (_actionState != null)
+            {
+                _actionState.ModeChanged += OnActionModeChanged;
             }
         }
 
@@ -182,6 +230,22 @@ namespace Xiuxian.Scripts.Game
             {
                 _playerProgressState.RealmProgressChanged -= OnRealmProgressChanged;
             }
+            if (_actionState != null)
+            {
+                _actionState.ModeChanged -= OnActionModeChanged;
+            }
+            if (_breakthroughButton != null)
+            {
+                _breakthroughButton.Pressed -= OnBreakthroughPressed;
+            }
+            if (_actionModeOptionButton != null)
+            {
+                _actionModeOptionButton.ItemSelected -= OnActionModeOptionSelected;
+            }
+            if (_levelOptionButton != null)
+            {
+                _levelOptionButton.ItemSelected -= OnLevelOptionSelected;
+            }
         }
 
         public override void _Input(InputEvent @event)
@@ -192,10 +256,6 @@ namespace Xiuxian.Scripts.Game
                 {
                     _debugPanelVisible = !_debugPanelVisible;
                     _debugPanelLabel.Visible = _debugPanelVisible;
-                    if (_validationPanel != null)
-                    {
-                        _validationPanel.Visible = _debugPanelVisible;
-                    }
                     RefreshDebugPanel();
                     RefreshValidationPanel();
                 }
@@ -218,6 +278,24 @@ namespace Xiuxian.Scripts.Game
                 else if (keyEvent.Keycode == Key.F6)
                 {
                     CycleSimulationLevelFilter();
+                    RefreshDebugPanel();
+                }
+                else if (keyEvent.Keycode == Key.F5)
+                {
+                    if (_levelConfigLoader != null && _levelConfigLoader.TrySetNextUnlockedLevelAsActive())
+                    {
+                        ApplyLevelConfig();
+                        _zoneLabel.Text = _currentZone;
+                        _exploreProgress = 0.0f;
+                        _progressBar.Value = 0.0f;
+                        ResetTrackVisual();
+                        RefreshLevelOptionButton();
+                    }
+                    RefreshDebugPanel();
+                }
+                else if (keyEvent.Keycode == Key.F4)
+                {
+                    _actionState?.ToggleMode();
                     RefreshDebugPanel();
                 }
                 else if (keyEvent.Keycode == Key.F7)
@@ -357,12 +435,155 @@ namespace Xiuxian.Scripts.Game
         private void OnRealmProgressChanged(int realmLevel, double realmExp, double realmExpRequired)
         {
             UpdateRealmStageLabel();
+            RefreshCultivationPanel();
+        }
+
+        private void OnActionModeChanged(string modeId)
+        {
+            if (IsDungeonMode())
+            {
+                _battleInfoLabel.Visible = false;
+                _roundInfoLabel.Text = $"{UiText.ExploreProgress(_exploreProgress)} | {BuildFrontMoveStatus()}";
+            }
+            else
+            {
+                _battleInfoLabel.Text = "主行为：修炼";
+                _battleInfoLabel.Visible = true;
+                _roundInfoLabel.Text = "副本暂停（修炼模式）";
+            }
+
+            RefreshActionModeOptionButton();
+            RefreshDebugPanel();
+        }
+
+        private void ConfigureActionModeOptionButton()
+        {
+            if (_actionModeOptionButton == null)
+            {
+                return;
+            }
+
+            _actionModeOptionButton.Clear();
+            _actionModeOptionButton.AddItem(UiText.ActionModeDungeon, 0);
+            _actionModeOptionButton.AddItem(UiText.ActionModeCultivation, 1);
+            _actionModeOptionButton.TooltipText = "切换主行为（等同 F4）";
+            _actionModeOptionButton.ItemSelected -= OnActionModeOptionSelected;
+            _actionModeOptionButton.ItemSelected += OnActionModeOptionSelected;
+        }
+
+        private void ConfigureLevelOptionButton()
+        {
+            if (_levelOptionButton == null)
+            {
+                return;
+            }
+
+            _levelOptionButton.ItemSelected -= OnLevelOptionSelected;
+            _levelOptionButton.ItemSelected += OnLevelOptionSelected;
+            _levelOptionButton.TooltipText = "切换已解锁副本";
+        }
+
+        private void RefreshActionModeOptionButton()
+        {
+            if (_actionModeOptionButton == null)
+            {
+                return;
+            }
+
+            _syncingActionModeOption = true;
+            int selected = IsDungeonMode() ? 0 : 1;
+            _actionModeOptionButton.Select(selected);
+            _actionModeOptionButton.Text = selected == 0 ? UiText.ActionModeDungeon : UiText.ActionModeCultivation;
+            _syncingActionModeOption = false;
+        }
+
+        private void RefreshLevelOptionButton()
+        {
+            if (_levelOptionButton == null || _levelConfigLoader == null)
+            {
+                return;
+            }
+
+            _syncingLevelOption = true;
+            _levelOptionButton.Clear();
+            var unlocked = _levelConfigLoader.GetUnlockedLevelIds();
+            int selectedIndex = -1;
+            for (int i = 0; i < unlocked.Count; i++)
+            {
+                string levelId = unlocked[i];
+                string levelName = _levelConfigLoader.GetLevelName(levelId);
+                string text = string.IsNullOrEmpty(levelName) ? levelId : levelName;
+                _levelOptionButton.AddItem(text, i);
+                _levelOptionButton.SetItemMetadata(i, levelId);
+                if (levelId == _levelConfigLoader.ActiveLevelId)
+                {
+                    selectedIndex = i;
+                }
+            }
+
+            if (_levelOptionButton.ItemCount > 0)
+            {
+                if (selectedIndex < 0)
+                {
+                    selectedIndex = 0;
+                }
+                _levelOptionButton.Select(selectedIndex);
+                string selectedLevelId = _levelOptionButton.GetItemMetadata(selectedIndex).AsString();
+                _levelOptionButton.TooltipText = string.IsNullOrEmpty(selectedLevelId)
+                    ? "切换已解锁副本"
+                    : $"当前副本: {selectedLevelId}";
+            }
+            _syncingLevelOption = false;
+        }
+
+        private void OnActionModeOptionSelected(long index)
+        {
+            if (_syncingActionModeOption || _actionState == null)
+            {
+                return;
+            }
+
+            string modeId = index == 1
+                ? PlayerActionState.ModeCultivation
+                : PlayerActionState.ModeDungeon;
+            _actionState.SetMode(modeId);
+        }
+
+        private void OnLevelOptionSelected(long index)
+        {
+            if (_syncingLevelOption || _levelOptionButton == null || _levelConfigLoader == null)
+            {
+                return;
+            }
+
+            int selectedIndex = (int)index;
+            if (selectedIndex < 0 || selectedIndex >= _levelOptionButton.ItemCount)
+            {
+                return;
+            }
+
+            string levelId = _levelOptionButton.GetItemMetadata(selectedIndex).AsString();
+            if (string.IsNullOrEmpty(levelId))
+            {
+                return;
+            }
+
+            if (_levelConfigLoader.TrySetActiveLevelIfUnlocked(levelId))
+            {
+                ApplyLevelConfig();
+                _zoneLabel.Text = _currentZone;
+                _exploreProgress = 0.0f;
+                _progressBar.Value = 0.0f;
+                ResetTrackVisual();
+                RefreshDebugPanel();
+            }
         }
 
         private void OnLevelConfigLoaded(string levelId, string levelName)
         {
             ApplyLevelConfig();
             _zoneLabel.Text = _currentZone;
+            RefreshLevelOptionButton();
             RefreshValidationPanel();
         }
 
@@ -370,6 +591,8 @@ namespace Xiuxian.Scripts.Game
         {
             _monsterMarkers.Clear();
             _monsterMarkerIds.Clear();
+            _monsterMoveInputPending.Clear();
+            _monsterMoveInputThreshold.Clear();
             for (int i = 1; i <= 8; i++)
             {
                 NodePath markerPath = $"{PlayerMarkerPath.GetConcatenatedNames().Replace("PlayerMarker", $"MonsterMarker{i:00}")}";
@@ -378,6 +601,22 @@ namespace Xiuxian.Scripts.Game
                 {
                     _monsterMarkers.Add(marker);
                     _monsterMarkerIds.Add(string.Empty);
+                    _monsterMoveInputPending.Add(0);
+                    _monsterMoveInputThreshold.Add(Mathf.Max(1, InputsPerMoveFrame));
+                }
+            }
+        }
+
+        private void CacheMonsterSlots()
+        {
+            _monsterSlots.Clear();
+            for (int i = 1; i <= 8; i++)
+            {
+                NodePath slotPath = $"{PlayerMarkerPath.GetConcatenatedNames().Replace("PlayerMarker", $"MonsterSlot{i:00}")}";
+                TextureRect slot = GetNodeOrNull<TextureRect>(slotPath);
+                if (slot != null)
+                {
+                    _monsterSlots.Add(slot);
                 }
             }
         }
@@ -386,9 +625,18 @@ namespace Xiuxian.Scripts.Game
         {
             // AP is displayed for resource settlement transparency; progress uses inputEvents only.
             _activityRateLabel.Text = UiText.BatchInputAndAp(inputEvents, apFinal);
+            RefreshMoveDebugLabel();
             RefreshDebugPanel();
             if (inputEvents <= 0)
             {
+                return;
+            }
+
+            if (!IsDungeonMode())
+            {
+                _battleInfoLabel.Text = "主行为：修炼";
+                _battleInfoLabel.Visible = true;
+                _roundInfoLabel.Text = "副本暂停（修炼模式）";
                 return;
             }
 
@@ -408,33 +656,27 @@ namespace Xiuxian.Scripts.Game
             _exploreProgress = Mathf.Min(_exploreProgress + inputEvents * ProgressPerInput, MaxProgress);
             _progressBar.Value = _exploreProgress;
 
-            _pendingExploreInputEvents += inputEvents;
-            int frames = _pendingExploreInputEvents / Mathf.Max(1, InputsPerMoveFrame);
-            if (frames > 0)
-            {
-                _pendingExploreInputEvents -= frames * Mathf.Max(1, InputsPerMoveFrame);
-                _moveFrameCounter += frames;
-                float shift = frames * MonsterMovePxPerFrame;
-                MoveMonsterQueue(shift);
-            }
+            int frames = MoveMonsterQueueByInputs(inputEvents);
+            _moveFrameCounter += frames;
 
             _battleInfoLabel.Text = UiText.ExploreFrame(_moveFrameCounter);
             _battleInfoLabel.Visible = false;
-            _roundInfoLabel.Text = $"{UiText.ExploreProgress(_exploreProgress)} | move {_pendingExploreInputEvents}/{Mathf.Max(1, InputsPerMoveFrame)}";
+            _roundInfoLabel.Text = $"{UiText.ExploreProgress(_exploreProgress)} | {BuildFrontMoveStatus()}";
+            RefreshMoveDebugLabel();
 
             if (_exploreProgress >= MaxProgress)
             {
                 _exploreProgress = 0.0f;
                 _progressBar.Value = 0.0f;
                 ApplyLevelCompletionRewards();
-                if (_levelConfigLoader != null && _levelConfigLoader.AdvanceToNextLevel())
+                if (_levelConfigLoader != null && _levelConfigLoader.TryAdvanceToNextUnlockedLevel())
                 {
                     ApplyLevelConfig();
                     _zoneLabel.Text = _currentZone;
                 }
                 _battleInfoLabel.Text = UiText.ZoneComplete;
                 _battleInfoLabel.Visible = true;
-                _pendingExploreInputEvents = 0;
+                ResetMonsterMoveState();
             }
 
             UpdateHpLabels();
@@ -442,24 +684,123 @@ namespace Xiuxian.Scripts.Game
             RefreshDebugPanel();
         }
 
-        private void MoveMonsterQueue(float shift)
+        private int MoveMonsterQueueByInputs(int inputEvents)
         {
-            float rightMostX = GetRightMostMonsterX();
-
-            foreach (Label monster in _monsterMarkers)
+            if (inputEvents <= 0)
             {
-                monster.Position = new Vector2(monster.Position.X - shift, monster.Position.Y);
-                if (monster.Position.X < 120.0f)
+                return 0;
+            }
+
+            int movedFrames = 0;
+
+            // Base conveyor movement: all monsters advance together.
+            _queueMoveInputPending += inputEvents;
+            int baseThreshold = Mathf.Max(1, InputsPerMoveFrame);
+            int queueFrames = _queueMoveInputPending / baseThreshold;
+            if (queueFrames > 0)
+            {
+                _queueMoveInputPending -= queueFrames * baseThreshold;
+                float queueShift = queueFrames * MonsterMovePxPerFrame;
+                for (int i = 0; i < _monsterMarkers.Count; i++)
                 {
-                    rightMostX = Mathf.Max(rightMostX, GetRightMostMonsterX());
-                    monster.Position = new Vector2(rightMostX + MonsterRespawnSpacing, monster.Position.Y);
-                    rightMostX = monster.Position.X;
-                    int idx = _monsterMarkers.IndexOf(monster);
-                    if (idx >= 0)
-                    {
-                        AssignMonsterToMarker(idx);
-                    }
+                    Label m = _monsterMarkers[i];
+                    m.Position = new Vector2(m.Position.X - queueShift, m.Position.Y);
                 }
+                movedFrames += queueFrames;
+            }
+
+            // Front bonus movement: front monster still follows per-monster threshold.
+            int frontIndex = FindFrontMonsterIndex();
+            if (frontIndex >= 0 && frontIndex < _monsterMarkers.Count)
+            {
+                int threshold = frontIndex < _monsterMoveInputThreshold.Count
+                    ? Mathf.Max(1, _monsterMoveInputThreshold[frontIndex])
+                    : Mathf.Max(1, InputsPerMoveFrame);
+                if (frontIndex < _monsterMoveInputPending.Count)
+                {
+                    _monsterMoveInputPending[frontIndex] += inputEvents;
+                }
+
+                int bonusFrames = frontIndex < _monsterMoveInputPending.Count
+                    ? _monsterMoveInputPending[frontIndex] / threshold
+                    : inputEvents / threshold;
+                if (bonusFrames > 0)
+                {
+                    if (frontIndex < _monsterMoveInputPending.Count)
+                    {
+                        _monsterMoveInputPending[frontIndex] -= bonusFrames * threshold;
+                    }
+
+                    Label front = _monsterMarkers[frontIndex];
+                    float bonusShift = bonusFrames * MonsterMovePxPerFrame;
+                    front.Position = new Vector2(front.Position.X - bonusShift, front.Position.Y);
+                    movedFrames += bonusFrames;
+                }
+            }
+
+            // Respawn any marker that drifted beyond the left bound back to queue tail.
+            for (int i = 0; i < _monsterMarkers.Count; i++)
+            {
+                Label monster = _monsterMarkers[i];
+                if (monster.Position.X >= 120.0f)
+                {
+                    continue;
+                }
+
+                float rightMostX = Mathf.Max(GetRightMostMonsterX(), monster.Position.X);
+                monster.Position = new Vector2(rightMostX + MonsterRespawnSpacing, monster.Position.Y);
+                AssignMonsterToMarker(i);
+            }
+
+            return movedFrames;
+        }
+
+        private void ResetMonsterMoveState()
+        {
+            _queueMoveInputPending = 0;
+            for (int i = 0; i < _monsterMoveInputPending.Count; i++)
+            {
+                _monsterMoveInputPending[i] = 0;
+            }
+        }
+
+        private string BuildFrontMoveStatus()
+        {
+            int idx = FindFrontMonsterIndex();
+            if (idx < 0 || idx >= _monsterMoveInputThreshold.Count || idx >= _monsterMoveInputPending.Count)
+            {
+                return "move idle";
+            }
+
+            int threshold = Mathf.Max(1, _monsterMoveInputThreshold[idx]);
+            int pending = Mathf.Clamp(_monsterMoveInputPending[idx], 0, threshold);
+            int remaining = Mathf.Max(0, threshold - pending);
+            return $"move remain {remaining} ({pending}/{threshold})";
+        }
+
+        private void RefreshMoveDebugLabel()
+        {
+            if (_moveDebugLabel == null)
+            {
+                return;
+            }
+
+            var sb = new StringBuilder();
+            sb.Append(BuildMoveDebugStatus());
+            sb.Append('\n');
+            sb.Append(BuildBattleDebugStatus());
+            sb.Append('\n');
+            sb.Append(BuildInputSourceDebugStatus());
+            sb.Append('\n');
+            sb.Append(BuildWaveDebugStatus());
+            _moveDebugLabel.Text = sb.ToString();
+        }
+
+        private void ApplyGlobalDebugOverlayVisibility()
+        {
+            if (_moveDebugLabel != null)
+            {
+                _moveDebugLabel.Visible = _globalDebugOverlayEnabled;
             }
         }
 
@@ -471,6 +812,65 @@ namespace Xiuxian.Scripts.Game
                 maxX = Mathf.Max(maxX, monster.Position.X);
             }
             return maxX;
+        }
+
+        private string BuildMoveDebugStatus()
+        {
+            int idx = FindFrontMonsterIndex();
+            if (idx < 0 || idx >= _monsterMoveInputThreshold.Count || idx >= _monsterMoveInputPending.Count)
+            {
+                return "调试-移动：前排怪 无目标";
+            }
+
+            int threshold = Mathf.Max(1, _monsterMoveInputThreshold[idx]);
+            int pending = Mathf.Clamp(_monsterMoveInputPending[idx], 0, threshold);
+            int remaining = Mathf.Max(0, threshold - pending);
+            string monsterId = idx < _monsterMarkerIds.Count ? _monsterMarkerIds[idx] : "unknown";
+            return $"调试-移动：前排#{idx + 1} [{monsterId}] 还需 {remaining} 步 ({pending}/{threshold})";
+        }
+
+        private string BuildBattleDebugStatus()
+        {
+            if (!_inBattle)
+            {
+                return "调试-战斗：未接敌";
+            }
+
+            int threshold = Mathf.Max(1, _inputsPerBattleRoundRuntime);
+            int pending = Mathf.Clamp(_pendingBattleInputEvents, 0, threshold);
+            int remaining = Mathf.Max(0, threshold - pending);
+            int roundsToKill = Mathf.CeilToInt(Mathf.Max(0, _enemyHp) / (float)Mathf.Max(1, _playerAttackPerRoundRuntime));
+            return $"调试-战斗：回合 {_battleRoundCounter}，下回合剩 {remaining} 输入 ({pending}/{threshold})，预计 {roundsToKill} 回合结束";
+        }
+
+        private string BuildInputSourceDebugStatus()
+        {
+            if (_activityState == null)
+            {
+                return "调试-输入：InputActivityState 不可用";
+            }
+
+            return $"调试-输入：batch={_activityState.InputEventsThisSecond} ap={_activityState.ApFinal:0.00} | 键={_activityState.KeyDownCount} 鼠键={_activityState.MouseClickCount} 滚轮={_activityState.MouseScrollSteps} 移动px={_activityState.MouseMoveDistancePx:0} 手柄键={_activityState.JoypadButtonCount} 轴={_activityState.JoypadAxisInputCount}";
+        }
+
+        private string BuildWaveDebugStatus()
+        {
+            int frontIndex = _inBattle ? _battleMonsterIndex : FindFrontMonsterIndex();
+            string frontMonsterId = (frontIndex >= 0 && frontIndex < _monsterMarkerIds.Count)
+                ? _monsterMarkerIds[frontIndex]
+                : "none";
+
+            if (_levelConfigLoader == null)
+            {
+                return $"调试-副本：loader 不可用 | 当前前排#{frontIndex + 1} [{frontMonsterId}]";
+            }
+
+            if (_levelConfigLoader.TryGetActiveWaveProgress(out int nextIndex, out int waveCount, out string nextMonsterId))
+            {
+                return $"调试-副本：波次 {nextIndex}/{waveCount}，next=[{nextMonsterId}] | 当前前排#{frontIndex + 1} [{frontMonsterId}]";
+            }
+
+            return $"调试-副本：未配置 monster_wave（使用 spawn_table） | 当前前排#{frontIndex + 1} [{frontMonsterId}]";
         }
 
         private void TryStartBattle()
@@ -500,6 +900,7 @@ namespace Xiuxian.Scripts.Game
             _roundInfoLabel.Text = UiText.BattleRound(0, _battleMonsterName, _enemyMaxHp);
             UpdateHpLabels();
             RefreshActorSlots();
+            RefreshMoveDebugLabel();
         }
 
         private int FindFrontMonsterIndex()
@@ -532,6 +933,7 @@ namespace Xiuxian.Scripts.Game
                 _roundInfoLabel.Text = $"蓄力 {_pendingBattleInputEvents}/{threshold} | {UiText.BattleRound(_battleRoundCounter, _battleMonsterName, _enemyHp)}";
                 UpdateHpLabels();
                 RefreshActorSlots();
+                RefreshMoveDebugLabel();
                 RefreshDebugPanel();
                 return;
             }
@@ -542,7 +944,13 @@ namespace Xiuxian.Scripts.Game
                 _battleRoundCounter++;
                 _enemyHp -= _playerAttackPerRoundRuntime;
                 int damageToPlayer = Mathf.Max(_enemyMinDamageRuntime, _enemyAttackPower / Mathf.Max(1, _enemyDamageDividerRuntime));
-                _playerHp = Mathf.Max(1, _playerHp - damageToPlayer);
+                _playerHp = Mathf.Max(0, _playerHp - damageToPlayer);
+
+                if (_playerHp <= 0)
+                {
+                    HandleBattleDefeat();
+                    return;
+                }
 
                 if (_enemyHp <= 0)
                 {
@@ -556,6 +964,36 @@ namespace Xiuxian.Scripts.Game
             _roundInfoLabel.Text = $"{UiText.BattleRound(_battleRoundCounter, _battleMonsterName, _enemyHp)} | next {_pendingBattleInputEvents}/{threshold}";
             UpdateHpLabels();
             RefreshActorSlots();
+            RefreshMoveDebugLabel();
+            RefreshDebugPanel();
+        }
+
+        private void HandleBattleDefeat()
+        {
+            _inBattle = false;
+            _battleMonsterIndex = -1;
+            _battleMonsterId = "";
+            _battleRoundCounter = 0;
+            _pendingBattleInputEvents = 0;
+            _exploreProgress = 0.0f;
+            _progressBar.Value = 0.0f;
+
+            string levelId = _levelConfigLoader?.ActiveLevelId ?? "";
+            if (_levelConfigLoader != null && !string.IsNullOrEmpty(levelId))
+            {
+                _levelConfigLoader.TrySetActiveLevel(levelId);
+            }
+
+            ApplyLevelConfig();
+            _zoneLabel.Text = _currentZone;
+            ResetTrackVisual();
+            _battleInfoLabel.Text = "战败，当前副本已重置";
+            _battleInfoLabel.Visible = true;
+            _roundInfoLabel.Text = UiText.WaitingInput;
+            RefreshLevelOptionButton();
+            UpdateHpLabels();
+            RefreshActorSlots();
+            RefreshMoveDebugLabel();
             RefreshDebugPanel();
         }
 
@@ -565,6 +1003,14 @@ namespace Xiuxian.Scripts.Game
             _roundInfoLabel.Text = UiText.BattleRound(_battleRoundCounter, _battleMonsterName, 0);
             _battleInfoLabel.Text = UiText.BattleVictory(_battleMonsterName);
             _battleInfoLabel.Visible = true;
+
+            string activeLevelId = _levelConfigLoader?.ActiveLevelId ?? "";
+            if (_levelConfigLoader != null &&
+                _levelConfigLoader.TryMarkBossDefeatedAndUnlockNext(activeLevelId, _battleMonsterId, out string unlockedLevelId) &&
+                !string.IsNullOrEmpty(unlockedLevelId))
+            {
+                _battleInfoLabel.Text = $"{UiText.BattleVictory(_battleMonsterName)} | 已解锁 {unlockedLevelId}";
+            }
 
             ApplyBattleRewards();
 
@@ -583,6 +1029,7 @@ namespace Xiuxian.Scripts.Game
             _enemyHpLabel.Visible = false;
             UpdateHpLabels();
             RefreshActorSlots();
+            RefreshMoveDebugLabel();
             RefreshDebugPanel();
         }
 
@@ -591,7 +1038,7 @@ namespace Xiuxian.Scripts.Game
             _battleMonsterIndex = -1;
             _inBattle = false;
             _battleMonsterId = "";
-            _pendingExploreInputEvents = 0;
+            ResetMonsterMoveState();
             _pendingBattleInputEvents = 0;
             _battleMonsterName = UiText.DefaultMonsterName;
             _enemyMaxHp = 24;
@@ -614,6 +1061,7 @@ namespace Xiuxian.Scripts.Game
 
             UpdateHpLabels();
             RefreshActorSlots();
+            RefreshMoveDebugLabel();
             RefreshDebugPanel();
         }
 
@@ -653,6 +1101,7 @@ namespace Xiuxian.Scripts.Game
             }
 
             int focusIndex = _inBattle ? _battleMonsterIndex : FindFrontMonsterIndex();
+            RefreshMonsterSlots(focusIndex);
             if (focusIndex < 0 || focusIndex >= _monsterMarkers.Count)
             {
                 _enemySlotTexture.Visible = false;
@@ -671,6 +1120,24 @@ namespace Xiuxian.Scripts.Game
 
             string focusMonsterId = _inBattle ? _battleMonsterId : _monsterMarkerIds[focusIndex];
             ApplyEnemyVisualConfig(focusMonsterId);
+        }
+
+        private void RefreshMonsterSlots(int focusIndex)
+        {
+            if (_monsterSlots.Count == 0)
+            {
+                return;
+            }
+
+            int count = Mathf.Min(_monsterSlots.Count, _monsterMarkers.Count);
+            for (int i = 0; i < count; i++)
+            {
+                TextureRect slot = _monsterSlots[i];
+                Label marker = _monsterMarkers[i];
+                slot.Position = new Vector2(marker.Position.X - 16.0f, marker.Position.Y - 26.0f);
+                slot.Visible = i != focusIndex;
+                slot.Modulate = GetMarkerTint(_monsterMarkerIds[i]);
+            }
         }
 
         private void ApplyEnemyVisualConfig(string monsterId)
@@ -751,7 +1218,7 @@ namespace Xiuxian.Scripts.Game
             _playerAttackPerRoundRuntime = Mathf.Max(1, _levelConfigLoader.PlayerAttackPerRound);
             _enemyDamageDividerRuntime = Mathf.Max(1, _levelConfigLoader.EnemyDamageDivider);
             _enemyMinDamageRuntime = Mathf.Max(1, _levelConfigLoader.EnemyMinDamagePerRound);
-            _playerHp = Mathf.Clamp(_playerHp, 1, _playerMaxHp);
+            _playerHp = Mathf.Clamp(_playerHp, 0, _playerMaxHp);
         }
 
         private void ConfigureBattleMonster()
@@ -831,13 +1298,44 @@ namespace Xiuxian.Scripts.Game
         {
             string zoneId = _levelConfigLoader?.ActiveLevelId ?? "";
             string battleState = _inBattle ? "in_battle" : "exploring";
+            var markerStates = new Godot.Collections.Array<Variant>();
+            for (int i = 0; i < _monsterMarkers.Count; i++)
+            {
+                Label marker = _monsterMarkers[i];
+                var item = new Godot.Collections.Dictionary<string, Variant>
+                {
+                    ["x"] = marker.Position.X,
+                    ["y"] = marker.Position.Y,
+                    ["monster_id"] = i < _monsterMarkerIds.Count ? _monsterMarkerIds[i] : "",
+                    ["move_pending"] = i < _monsterMoveInputPending.Count ? _monsterMoveInputPending[i] : 0,
+                    ["move_threshold"] = i < _monsterMoveInputThreshold.Count ? _monsterMoveInputThreshold[i] : Mathf.Max(1, InputsPerMoveFrame)
+                };
+                markerStates.Add(item);
+            }
 
             return new Godot.Collections.Dictionary<string, Variant>
             {
                 ["zone_id"] = zoneId,
                 ["zone_name"] = _currentZone,
                 ["explore_progress"] = _exploreProgress,
-                ["battle_state"] = battleState
+                ["battle_state"] = battleState,
+                ["move_frame_counter"] = _moveFrameCounter,
+                ["queue_move_input_pending"] = _queueMoveInputPending,
+                ["player_hp"] = _playerHp,
+                ["player_max_hp"] = _playerMaxHp,
+                ["enemy_hp"] = _enemyHp,
+                ["enemy_max_hp"] = _enemyMaxHp,
+                ["enemy_attack_power"] = _enemyAttackPower,
+                ["inputs_per_battle_round_runtime"] = _inputsPerBattleRoundRuntime,
+                ["player_attack_per_round_runtime"] = _playerAttackPerRoundRuntime,
+                ["enemy_damage_divider_runtime"] = _enemyDamageDividerRuntime,
+                ["enemy_min_damage_runtime"] = _enemyMinDamageRuntime,
+                ["battle_round_counter"] = _battleRoundCounter,
+                ["pending_battle_input_events"] = _pendingBattleInputEvents,
+                ["battle_monster_index"] = _battleMonsterIndex,
+                ["battle_monster_id"] = _battleMonsterId,
+                ["battle_monster_name"] = _battleMonsterName,
+                ["monster_marker_states"] = markerStates
             };
         }
 
@@ -853,17 +1351,104 @@ namespace Xiuxian.Scripts.Game
                 _exploreProgress = Mathf.Clamp((float)data["explore_progress"].AsDouble(), 0.0f, MaxProgress);
             }
 
+            _moveFrameCounter = data.ContainsKey("move_frame_counter") ? Mathf.Max(0, data["move_frame_counter"].AsInt32()) : _moveFrameCounter;
+            _queueMoveInputPending = data.ContainsKey("queue_move_input_pending") ? Mathf.Max(0, data["queue_move_input_pending"].AsInt32()) : 0;
+            _playerHp = data.ContainsKey("player_hp") ? Mathf.Max(0, data["player_hp"].AsInt32()) : _playerHp;
+            _playerMaxHp = data.ContainsKey("player_max_hp") ? Mathf.Max(1, data["player_max_hp"].AsInt32()) : _playerMaxHp;
+            _enemyHp = data.ContainsKey("enemy_hp") ? Mathf.Max(0, data["enemy_hp"].AsInt32()) : _enemyHp;
+            _enemyMaxHp = data.ContainsKey("enemy_max_hp") ? Mathf.Max(1, data["enemy_max_hp"].AsInt32()) : _enemyMaxHp;
+            _enemyAttackPower = data.ContainsKey("enemy_attack_power") ? Mathf.Max(1, data["enemy_attack_power"].AsInt32()) : _enemyAttackPower;
+            _inputsPerBattleRoundRuntime = data.ContainsKey("inputs_per_battle_round_runtime") ? Mathf.Max(1, data["inputs_per_battle_round_runtime"].AsInt32()) : _inputsPerBattleRoundRuntime;
+            _playerAttackPerRoundRuntime = data.ContainsKey("player_attack_per_round_runtime") ? Mathf.Max(1, data["player_attack_per_round_runtime"].AsInt32()) : _playerAttackPerRoundRuntime;
+            _enemyDamageDividerRuntime = data.ContainsKey("enemy_damage_divider_runtime") ? Mathf.Max(1, data["enemy_damage_divider_runtime"].AsInt32()) : _enemyDamageDividerRuntime;
+            _enemyMinDamageRuntime = data.ContainsKey("enemy_min_damage_runtime") ? Mathf.Max(1, data["enemy_min_damage_runtime"].AsInt32()) : _enemyMinDamageRuntime;
+            _battleRoundCounter = data.ContainsKey("battle_round_counter") ? Mathf.Max(0, data["battle_round_counter"].AsInt32()) : _battleRoundCounter;
+            _pendingBattleInputEvents = data.ContainsKey("pending_battle_input_events") ? Mathf.Max(0, data["pending_battle_input_events"].AsInt32()) : _pendingBattleInputEvents;
+            _battleMonsterIndex = data.ContainsKey("battle_monster_index") ? data["battle_monster_index"].AsInt32() : _battleMonsterIndex;
+            _battleMonsterId = data.ContainsKey("battle_monster_id") ? data["battle_monster_id"].AsString() : _battleMonsterId;
+            _battleMonsterName = data.ContainsKey("battle_monster_name") ? data["battle_monster_name"].AsString() : _battleMonsterName;
+
+            if (data.ContainsKey("monster_marker_states") && data["monster_marker_states"].VariantType == Variant.Type.Array)
+            {
+                var markerStates = (Godot.Collections.Array<Variant>)data["monster_marker_states"];
+                int count = Mathf.Min(markerStates.Count, _monsterMarkers.Count);
+                for (int i = 0; i < count; i++)
+                {
+                    if (markerStates[i].VariantType != Variant.Type.Dictionary)
+                    {
+                        continue;
+                    }
+
+                    var item = (Godot.Collections.Dictionary<string, Variant>)markerStates[i];
+                    Label marker = _monsterMarkers[i];
+                    float x = item.ContainsKey("x") ? (float)item["x"].AsDouble() : marker.Position.X;
+                    float y = item.ContainsKey("y") ? (float)item["y"].AsDouble() : marker.Position.Y;
+                    marker.Position = new Vector2(x, y);
+
+                    string monsterId = item.ContainsKey("monster_id") ? item["monster_id"].AsString() : "";
+                    if (i < _monsterMarkerIds.Count)
+                    {
+                        _monsterMarkerIds[i] = monsterId;
+                    }
+
+                    if (i < _monsterMoveInputPending.Count)
+                    {
+                        _monsterMoveInputPending[i] = item.ContainsKey("move_pending") ? Mathf.Max(0, item["move_pending"].AsInt32()) : 0;
+                    }
+                    if (i < _monsterMoveInputThreshold.Count)
+                    {
+                        int threshold = item.ContainsKey("move_threshold") ? item["move_threshold"].AsInt32() : Mathf.Max(1, InputsPerMoveFrame);
+                        _monsterMoveInputThreshold[i] = Mathf.Max(1, threshold);
+                    }
+
+                    ApplyMarkerVisual(marker, monsterId);
+                }
+            }
+
             string battleState = data.ContainsKey("battle_state") ? data["battle_state"].AsString() : "exploring";
             _inBattle = battleState == "in_battle";
-            if (_inBattle)
+            if (_battleMonsterIndex < 0 || _battleMonsterIndex >= _monsterMarkers.Count)
             {
-                // V1 persistence restores battle flag only; combat instance resets to safe state.
-                _inBattle = false;
+                _battleMonsterIndex = FindFrontMonsterIndex();
+            }
+
+            if (string.IsNullOrEmpty(_battleMonsterId) &&
+                _battleMonsterIndex >= 0 &&
+                _battleMonsterIndex < _monsterMarkerIds.Count)
+            {
+                _battleMonsterId = _monsterMarkerIds[_battleMonsterIndex];
             }
 
             _zoneLabel.Text = _currentZone;
             _progressBar.Value = _exploreProgress;
-            _roundInfoLabel.Text = UiText.ExploreProgress(_exploreProgress);
+            _playerHp = Mathf.Clamp(_playerHp, 0, _playerMaxHp);
+            _enemyHp = Mathf.Clamp(_enemyHp, 0, _enemyMaxHp);
+
+            if (_inBattle)
+            {
+                if (_levelConfigLoader != null && !string.IsNullOrEmpty(_battleMonsterId))
+                {
+                    int savedEnemyHp = _enemyHp;
+                    ConfigureBattleMonster();
+                    _enemyHp = Mathf.Clamp(savedEnemyHp, 0, _enemyMaxHp);
+                }
+
+                _battleInfoLabel.Text = UiText.BattleInProgress(_battleMonsterName);
+                _battleInfoLabel.Visible = true;
+                int threshold = Mathf.Max(1, _inputsPerBattleRoundRuntime);
+                _roundInfoLabel.Text = $"{UiText.BattleRound(_battleRoundCounter, _battleMonsterName, _enemyHp)} | next {_pendingBattleInputEvents}/{threshold}";
+            }
+            else
+            {
+                _battleInfoLabel.Text = "";
+                _battleInfoLabel.Visible = false;
+                _roundInfoLabel.Text = $"{UiText.ExploreProgress(_exploreProgress)} | {BuildFrontMoveStatus()}";
+            }
+
+            UpdateHpLabels();
+            RefreshActorSlots();
+            RefreshMoveDebugLabel();
+            RefreshDebugPanel();
         }
 
         private void AssignMonsterToMarker(int markerIndex)
@@ -875,30 +1460,91 @@ namespace Xiuxian.Scripts.Game
 
             string monsterId = _levelConfigLoader?.RollSpawnMonsterId() ?? string.Empty;
             _monsterMarkerIds[markerIndex] = monsterId;
+            int threshold = Mathf.Max(1, InputsPerMoveFrame);
+            if (_levelConfigLoader != null &&
+                !string.IsNullOrEmpty(monsterId) &&
+                _levelConfigLoader.TryGetMonsterMoveRule(monsterId, out _, out int configured))
+            {
+                threshold = Mathf.Max(1, configured);
+            }
+            if (markerIndex < _monsterMoveInputThreshold.Count)
+            {
+                _monsterMoveInputThreshold[markerIndex] = threshold;
+            }
+            if (markerIndex < _monsterMoveInputPending.Count)
+            {
+                _monsterMoveInputPending[markerIndex] = 0;
+            }
             ApplyMarkerVisual(_monsterMarkers[markerIndex], monsterId);
         }
 
         private static void ApplyMarkerVisual(Label marker, string monsterId)
         {
+            marker.Modulate = GetMarkerTint(monsterId);
             switch (monsterId)
             {
                 case "monster_slime_moss":
                     marker.Text = "SL";
-                    marker.Modulate = new Color(0.66f, 0.92f, 0.52f, 1.0f);
                     break;
                 case "monster_bat_shadow":
                     marker.Text = "BT";
-                    marker.Modulate = new Color(0.75f, 0.75f, 0.92f, 1.0f);
                     break;
                 case "monster_spider_cave":
                     marker.Text = "SP";
-                    marker.Modulate = new Color(0.95f, 0.56f, 0.56f, 1.0f);
                     break;
                 default:
                     marker.Text = "MO";
-                    marker.Modulate = Colors.White;
                     break;
             }
+        }
+
+        private static Color GetMarkerTint(string monsterId)
+        {
+            switch (monsterId)
+            {
+                case "monster_slime_moss":
+                    return new Color(0.66f, 0.92f, 0.52f, 1.0f);
+                case "monster_bat_shadow":
+                    return new Color(0.75f, 0.75f, 0.92f, 1.0f);
+                case "monster_spider_cave":
+                    return new Color(0.95f, 0.56f, 0.56f, 1.0f);
+                default:
+                    return new Color(0.9f, 0.9f, 0.9f, 0.92f);
+            }
+        }
+
+        private void RefreshCultivationPanel()
+        {
+            if (_playerProgressState == null || _cultivationProgressBar == null || _breakthroughButton == null)
+            {
+                return;
+            }
+
+            double required = Mathf.Max(1.0f, (float)_playerProgressState.RealmExpRequired);
+            double percentRaw = _playerProgressState.RealmExp / required * 100.0;
+            double percent = Mathf.Clamp((float)percentRaw, 0.0f, 100.0f);
+            _cultivationProgressBar.Value = percent;
+            _cultivationProgressBar.TooltipText = $"修炼进度 {_playerProgressState.RealmExp:0.0}/{required:0.0}";
+            _breakthroughButton.Disabled = !_playerProgressState.CanBreakthrough;
+            _breakthroughButton.Text = _playerProgressState.CanBreakthrough ? "突破!" : "突破";
+            _breakthroughButton.TooltipText = _playerProgressState.CanBreakthrough
+                ? "可突破，点击提升境界"
+                : $"进度未满，还需 {Mathf.Max(0.0f, (float)(required - _playerProgressState.RealmExp)):0.0}";
+            if (_cultivationLabel != null)
+            {
+                _cultivationLabel.Text = $"修炼 {_playerProgressState.RealmExp:0}/{required:0}";
+            }
+        }
+
+        private void OnBreakthroughPressed()
+        {
+            if (_playerProgressState == null)
+            {
+                return;
+            }
+
+            _playerProgressState.TryBreakthrough();
+            RefreshCultivationPanel();
         }
 
         private void EnsureDebugPanel()
@@ -922,7 +1568,9 @@ namespace Xiuxian.Scripts.Game
             }
 
             var sb = new StringBuilder();
+            string actionMode = IsDungeonMode() ? "dungeon" : "cultivation";
             sb.Append($"[F8] debug | zone={_currentZone}");
+            sb.Append($" | mode={actionMode}");
             sb.Append($" | progress={_exploreProgress:0.0}%");
             sb.Append($" | monster={_battleMonsterName}({_battleMonsterId})");
             sb.Append($" | drop={_lastDropSummary}");
@@ -935,12 +1583,19 @@ namespace Xiuxian.Scripts.Game
                 sb.Append(_levelConfigLoader.BuildDebugSummary());
                 sb.Append('\n');
                 sb.Append(_levelConfigLoader.BuildValidationSummary(6));
+                sb.Append('\n');
+                sb.Append(_levelConfigLoader.BuildLevelPreviewSummary(8));
             }
 
-            sb.Append("\n[F6] level  [F7] monster  [F9] sim200  [F10] sim1000  [F11] scope  [F12] active-level");
+            sb.Append("\n[F4] toggle main action  [F5] switch unlocked level  [F6] sim-level  [F7] sim-monster  [F9] sim200  [F10] sim1000  [F11] scope  [F12] active-level");
             sb.Append($"\nSim: {_lastSimulationSummary}");
 
             _debugPanelLabel.Text = sb.ToString();
+        }
+
+        private bool IsDungeonMode()
+        {
+            return _actionState == null || _actionState.IsDungeonMode;
         }
 
         private void RefreshValidationPanel()
@@ -950,8 +1605,8 @@ namespace Xiuxian.Scripts.Game
                 return;
             }
 
-            _validationPanel.Visible = _debugPanelVisible;
-            if (!_debugPanelVisible)
+            _validationPanel.Visible = _validationPanelEnabled;
+            if (!_validationPanelEnabled)
             {
                 return;
             }
@@ -1037,6 +1692,19 @@ namespace Xiuxian.Scripts.Game
 
             sb.Append("\n[F11] scope  [F12] 当前关卡");
             _validationBodyLabel.Text = sb.ToString();
+        }
+
+        public void SetValidationPanelEnabled(bool enabled)
+        {
+            _validationPanelEnabled = enabled;
+            RefreshValidationPanel();
+        }
+
+        public void SetGlobalDebugOverlayEnabled(bool enabled)
+        {
+            _globalDebugOverlayEnabled = enabled;
+            ApplyGlobalDebugOverlayVisibility();
+            RefreshMoveDebugLabel();
         }
 
         private void CycleValidationScopeFilter()

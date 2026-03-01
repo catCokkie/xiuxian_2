@@ -36,11 +36,18 @@ public static class UiText
     public const string Resolution = "主界面分辨率";
     public const string ShowControlMarkers = "显示界面控制标记";
     public const string LogFolder = "显示日志文件夹";
+    public const string ShowValidationPanel = "显示配置校验面板";
     public const string GameScale = "游戏缩放比例";
     public const string UiScale = "界面缩放比例";
     public const string AutoSaveInterval = "自动存档频率";
     public const string CloudSync = "云端同步";
     public const string MilestoneTips = "里程碑提示";
+    public const string GlobalDebugOverlay = "全局调试信息";
+    public const string ActionModeDungeon = "主行为: 副本";
+    public const string ActionModeCultivation = "主行为: 修炼";
+    public const string LevelSelectPrefix = "副本:";
+    public const string ActionModeQuickToggle = "切主行为";
+    public const string NextLevelQuickButton = "下一副本";
 
     public static string SpiritStone(int amount) => $"{SpiritStoneLabelPrefix} {amount}";
     public static string RealmStage(int realmLevel, double percent) => $"炼气{realmLevel}层 {percent:0}%";

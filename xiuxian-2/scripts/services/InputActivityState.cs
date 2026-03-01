@@ -22,12 +22,16 @@ namespace Xiuxian.Scripts.Services
         public int MouseClickCount { get; private set; }
         public int MouseScrollSteps { get; private set; }
         public double MouseMoveDistancePx { get; private set; }
+        public int JoypadButtonCount { get; private set; }
+        public int JoypadAxisInputCount { get; private set; }
 
         // Lifetime counters
         public long TotalKeyDownCount { get; private set; }
         public long TotalMouseClickCount { get; private set; }
         public long TotalMouseScrollSteps { get; private set; }
         public double TotalMouseMoveDistancePx { get; private set; }
+        public long TotalJoypadButtonCount { get; private set; }
+        public long TotalJoypadAxisInputCount { get; private set; }
 
         // AP results
         public double ApThisSecond { get; private set; }
@@ -40,6 +44,8 @@ namespace Xiuxian.Scripts.Services
         [Export] public double MouseClickWeight { get; set; } = 1.2;
         [Export] public double ScrollStepWeight { get; set; } = 0.4;
         [Export] public double MovePxDivider { get; set; } = 600.0;
+        [Export] public double JoypadButtonWeight { get; set; } = 1.0;
+        [Export] public double JoypadAxisWeight { get; set; } = 0.8;
 
         [Export] public double DecayThreshold { get; set; } = 1.0;
         [Export] public double DecayRate { get; set; } = 0.25;
@@ -59,6 +65,8 @@ namespace Xiuxian.Scripts.Services
         private int _pendingMouseClick;
         private int _pendingMouseScroll;
         private double _pendingMouseMove;
+        private int _pendingJoypadButton;
+        private int _pendingJoypadAxis;
 
         private double _rollingRawApSum;
         private double _runtimeSeconds;
@@ -75,7 +83,15 @@ namespace Xiuxian.Scripts.Services
                 _apFinalThisMinute = 0.0;
             }
 
-            DrainPendingInput(out double apRawBatch, out int inputBatch, out int keyBatch, out int clickBatch, out int scrollBatch, out double moveBatch);
+            DrainPendingInput(
+                out double apRawBatch,
+                out int inputBatch,
+                out int keyBatch,
+                out int clickBatch,
+                out int scrollBatch,
+                out double moveBatch,
+                out int joypadButtonBatch,
+                out int joypadAxisBatch);
             if (apRawBatch <= 0.0 && inputBatch <= 0)
             {
                 return;
@@ -85,6 +101,8 @@ namespace Xiuxian.Scripts.Services
             MouseClickCount = clickBatch;
             MouseScrollSteps = scrollBatch;
             MouseMoveDistancePx = moveBatch;
+            JoypadButtonCount = joypadButtonBatch;
+            JoypadAxisInputCount = joypadAxisBatch;
             InputEventsThisSecond = inputBatch;
 
             PushRollingWindow(apRawBatch);
@@ -157,13 +175,37 @@ namespace Xiuxian.Scripts.Services
             }
         }
 
+        public void RegisterJoypadButton()
+        {
+            lock (_pendingLock)
+            {
+                _pendingJoypadButton++;
+                _pendingInputEvents++;
+                _pendingRawAp += JoypadButtonWeight;
+                TotalJoypadButtonCount++;
+            }
+        }
+
+        public void RegisterJoypadAxisInput()
+        {
+            lock (_pendingLock)
+            {
+                _pendingJoypadAxis++;
+                _pendingInputEvents++;
+                _pendingRawAp += JoypadAxisWeight;
+                TotalJoypadAxisInputCount++;
+            }
+        }
+
         private void DrainPendingInput(
             out double apRawBatch,
             out int inputBatch,
             out int keyBatch,
             out int clickBatch,
             out int scrollBatch,
-            out double moveBatch)
+            out double moveBatch,
+            out int joypadButtonBatch,
+            out int joypadAxisBatch)
         {
             lock (_pendingLock)
             {
@@ -173,6 +215,8 @@ namespace Xiuxian.Scripts.Services
                 clickBatch = _pendingMouseClick;
                 scrollBatch = _pendingMouseScroll;
                 moveBatch = _pendingMouseMove;
+                joypadButtonBatch = _pendingJoypadButton;
+                joypadAxisBatch = _pendingJoypadAxis;
 
                 _pendingRawAp = 0.0;
                 _pendingInputEvents = 0;
@@ -180,6 +224,8 @@ namespace Xiuxian.Scripts.Services
                 _pendingMouseClick = 0;
                 _pendingMouseScroll = 0;
                 _pendingMouseMove = 0.0;
+                _pendingJoypadButton = 0;
+                _pendingJoypadAxis = 0;
             }
         }
 
@@ -248,6 +294,8 @@ namespace Xiuxian.Scripts.Services
                 ["total_mouse_click"] = TotalMouseClickCount,
                 ["total_scroll_steps"] = TotalMouseScrollSteps,
                 ["total_move_distance"] = TotalMouseMoveDistancePx,
+                ["total_joypad_button"] = TotalJoypadButtonCount,
+                ["total_joypad_axis"] = TotalJoypadAxisInputCount,
                 ["ap_accumulator"] = ApAccumulator
             };
         }
@@ -258,6 +306,8 @@ namespace Xiuxian.Scripts.Services
             TotalMouseClickCount = data.ContainsKey("total_mouse_click") ? data["total_mouse_click"].AsInt64() : 0L;
             TotalMouseScrollSteps = data.ContainsKey("total_scroll_steps") ? data["total_scroll_steps"].AsInt64() : 0L;
             TotalMouseMoveDistancePx = data.ContainsKey("total_move_distance") ? data["total_move_distance"].AsDouble() : 0.0;
+            TotalJoypadButtonCount = data.ContainsKey("total_joypad_button") ? data["total_joypad_button"].AsInt64() : 0L;
+            TotalJoypadAxisInputCount = data.ContainsKey("total_joypad_axis") ? data["total_joypad_axis"].AsInt64() : 0L;
             ApAccumulator = data.ContainsKey("ap_accumulator") ? data["ap_accumulator"].AsDouble() : 0.0;
         }
 
@@ -277,6 +327,8 @@ namespace Xiuxian.Scripts.Services
             MouseClickCount = 0;
             MouseScrollSteps = 0;
             MouseMoveDistancePx = 0.0;
+            JoypadButtonCount = 0;
+            JoypadAxisInputCount = 0;
             ApThisSecond = 0.0;
             ApFinal = 0.0;
             InputEventsThisSecond = 0;

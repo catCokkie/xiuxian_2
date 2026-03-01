@@ -24,6 +24,7 @@ InputPauseShortcut="*res://scripts/services/InputPauseShortcut.cs"
 BackpackState="*res://scripts/services/BackpackState.cs"
 ResourceWalletState="*res://scripts/services/ResourceWalletState.cs"
 PlayerProgressState="*res://scripts/services/PlayerProgressState.cs"
+PlayerActionState="*res://scripts/services/PlayerActionState.cs"
 ActivityConversionService="*res://scripts/services/ActivityConversionService.cs"
 CloudSaveSyncService="*res://scripts/services/CloudSaveSyncService.cs"
 

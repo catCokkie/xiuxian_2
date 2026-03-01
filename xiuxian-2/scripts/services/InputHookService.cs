@@ -18,9 +18,12 @@ namespace Xiuxian.Scripts.Services
 
         [Export] public bool AutoStart { get; set; } = true;
         [Export] public bool IsPaused { get; set; } = false;
-        [Export] public bool EnableInAppFallback { get; set; } = false;
+        [Export] public bool EnableInAppFallback { get; set; } = true;
         [Export] public bool ForceGlobalCapture { get; set; } = true;
         [Export] public double GlobalHookRetryIntervalSeconds { get; set; } = 2.0;
+        [Export] public float JoyAxisDeadzone { get; set; } = 0.35f;
+        [Export] public float JoyAxisStep { get; set; } = 0.25f;
+        [Export] public bool EnableJoyAxisCounting { get; set; } = false;
 
         // 依赖：输入状态管理器
         [Export] public NodePath ActivityStatePath { get; set; } = "/root/InputActivityState";
@@ -40,6 +43,7 @@ namespace Xiuxian.Scripts.Services
         private Vector2I _lastMousePosition;
         private bool _hasLastMousePosition = false;
         private bool _warnedUnsupportedPlatform = false;
+        private readonly System.Collections.Generic.Dictionary<string, float> _joyAxisSample = new();
 
         public override void _Ready()
         {
@@ -54,6 +58,7 @@ namespace Xiuxian.Scripts.Services
             _keyboardProc = KeyboardHookCallback;
             _mouseProc = MouseHookCallback;
             ProcessMode = ProcessModeEnum.Always;
+            SetProcessInput(true);
 
             if (AutoStart)
             {
@@ -85,24 +90,29 @@ namespace Xiuxian.Scripts.Services
 
         public override void _Input(InputEvent @event)
         {
-            if (!EnableInAppFallback || ForceGlobalCapture || IsPaused || _activityState == null)
+            if (!EnableInAppFallback || IsPaused || _activityState == null)
             {
                 return;
             }
 
-            // If global Windows hooks are active, avoid double-counting in-app events.
-            if (_isHookActive && IsWindowsPlatform())
-            {
-                return;
-            }
+            // Global Win hooks only cover keyboard/mouse; joypad must still be counted in-app.
+            bool skipKeyboardMouseInApp = _isHookActive && IsWindowsPlatform();
 
             switch (@event)
             {
                 case InputEventKey keyEvent when keyEvent.Pressed && !keyEvent.Echo:
-                    _activityState.RegisterKeyDown();
+                    if (!skipKeyboardMouseInApp)
+                    {
+                        _activityState.RegisterKeyDown();
+                    }
                     break;
 
                 case InputEventMouseButton mouseButton when mouseButton.Pressed:
+                    if (skipKeyboardMouseInApp)
+                    {
+                        break;
+                    }
+
                     if (mouseButton.ButtonIndex == MouseButton.WheelUp || mouseButton.ButtonIndex == MouseButton.WheelDown)
                     {
                         _activityState.RegisterMouseScroll(1);
@@ -114,9 +124,48 @@ namespace Xiuxian.Scripts.Services
                     break;
 
                 case InputEventMouseMotion motionEvent:
-                    _activityState.RegisterMouseMove(motionEvent.Relative.Length());
+                    if (!skipKeyboardMouseInApp)
+                    {
+                        _activityState.RegisterMouseMove(motionEvent.Relative.Length());
+                    }
+                    break;
+
+                case InputEventJoypadButton joyButton when joyButton.Pressed:
+                    _activityState.RegisterJoypadButton();
+                    break;
+
+                case InputEventJoypadMotion joyMotion:
+                    if (EnableJoyAxisCounting)
+                    {
+                        HandleJoypadMotion(joyMotion);
+                    }
                     break;
             }
+        }
+
+        private void HandleJoypadMotion(InputEventJoypadMotion joyMotion)
+        {
+            float value = joyMotion.AxisValue;
+            float absValue = Mathf.Abs(value);
+            string key = $"{joyMotion.Device}:{(int)joyMotion.Axis}";
+            float previous = _joyAxisSample.TryGetValue(key, out float prev) ? prev : 0.0f;
+
+            // Only count meaningful stick/trigger changes to avoid per-frame flooding.
+            if (absValue < JoyAxisDeadzone)
+            {
+                _joyAxisSample[key] = 0.0f;
+                return;
+            }
+
+            float delta = Mathf.Abs(absValue - previous);
+            if (previous <= 0.0f || delta >= JoyAxisStep)
+            {
+                _activityState.RegisterJoypadAxisInput();
+                _joyAxisSample[key] = absValue;
+                return;
+            }
+
+            _joyAxisSample[key] = absValue;
         }
 
         /// <summary>

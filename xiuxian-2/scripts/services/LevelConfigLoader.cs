@@ -37,6 +37,11 @@ namespace Xiuxian.Scripts.Services
         private readonly Dictionary<string, long> _dailyRollDayByTable = new();
         private readonly Dictionary<string, int> _hourlyRollCountByTable = new();
         private readonly Dictionary<string, long> _hourlyRollHourByTable = new();
+        private readonly HashSet<string> _unlockedLevelIds = new();
+        private readonly HashSet<string> _bossClearedLevelIds = new();
+        private readonly List<string> _activeLevelMonsterWave = new();
+        private readonly Dictionary<string, int> _activeMoveInputsByCategory = new();
+        private int _activeLevelWaveIndex;
         private readonly RandomNumberGenerator _rng = new();
         private readonly List<string> _validationIssues = new();
         private readonly List<Godot.Collections.Dictionary<string, Variant>> _validationEntries = new();
@@ -65,6 +70,7 @@ namespace Xiuxian.Scripts.Services
             _dailyRollDayByTable.Clear();
             _hourlyRollCountByTable.Clear();
             _hourlyRollHourByTable.Clear();
+            _bossClearedLevelIds.Clear();
 
             using FileAccess? file = FileAccess.Open(ConfigPath, FileAccess.ModeFlags.Read);
             if (file == null)
@@ -83,6 +89,7 @@ namespace Xiuxian.Scripts.Services
 
             _rootData = (Godot.Collections.Dictionary<string, Variant>)parsed;
             ParseLevelsSection();
+            EnsureLevelUnlockBootstrap();
             IndexMonsters();
             IndexDropTables();
             ValidateConfiguration();
@@ -103,6 +110,17 @@ namespace Xiuxian.Scripts.Services
             ApplyActiveLevelData();
             EmitSignal(SignalName.ConfigLoaded, ActiveLevelId, ActiveLevelName);
             return true;
+        }
+
+        public bool TryAdvanceToNextUnlockedLevel()
+        {
+            string next = GetNextUnlockedLevelId(ActiveLevelId);
+            if (string.IsNullOrEmpty(next) || next == ActiveLevelId)
+            {
+                return false;
+            }
+
+            return TrySetActiveLevel(next);
         }
 
         public bool TrySetActiveLevel(string levelId)
@@ -127,6 +145,27 @@ namespace Xiuxian.Scripts.Services
             }
 
             return false;
+        }
+
+        public bool TrySetActiveLevelIfUnlocked(string levelId)
+        {
+            if (!IsLevelUnlocked(levelId))
+            {
+                return false;
+            }
+
+            return TrySetActiveLevel(levelId);
+        }
+
+        public bool TrySetNextUnlockedLevelAsActive()
+        {
+            string next = GetNextUnlockedLevelId(ActiveLevelId);
+            if (string.IsNullOrEmpty(next))
+            {
+                return false;
+            }
+
+            return TrySetActiveLevel(next);
         }
 
         public bool TryGetMonster(string monsterId, out Godot.Collections.Dictionary<string, Variant> monsterData)
@@ -156,6 +195,13 @@ namespace Xiuxian.Scripts.Services
             if (!TryGetActiveLevel(out var level))
             {
                 return "";
+            }
+            if (_activeLevelMonsterWave.Count > 0)
+            {
+                _activeLevelWaveIndex = Math.Clamp(_activeLevelWaveIndex, 0, _activeLevelMonsterWave.Count - 1);
+                string waveMonsterId = _activeLevelMonsterWave[_activeLevelWaveIndex];
+                _activeLevelWaveIndex = (_activeLevelWaveIndex + 1) % _activeLevelMonsterWave.Count;
+                return waveMonsterId;
             }
             if (!level.ContainsKey("spawn_table"))
             {
@@ -275,6 +321,61 @@ namespace Xiuxian.Scripts.Services
                 tint = ParseColorVariant(visual["tint"], tint);
             }
 
+            return true;
+        }
+
+        public bool TryGetMonsterMoveRule(
+            string monsterId,
+            out string moveCategory,
+            out int inputsPerMove)
+        {
+            moveCategory = "normal";
+            inputsPerMove = 4;
+
+            if (!TryGetMonster(monsterId, out var monster))
+            {
+                return false;
+            }
+
+            moveCategory = GetString(monster, "move_category", "");
+            if (string.IsNullOrEmpty(moveCategory))
+            {
+                moveCategory = GetString(monster, "rarity", "normal");
+            }
+
+            if (_activeMoveInputsByCategory.TryGetValue(moveCategory, out int configured))
+            {
+                inputsPerMove = Math.Max(1, configured);
+            }
+            else if (_activeMoveInputsByCategory.TryGetValue("default", out int fallback))
+            {
+                inputsPerMove = Math.Max(1, fallback);
+            }
+
+            return true;
+        }
+
+        public bool TryGetActiveWaveProgress(
+            out int nextSpawnIndex,
+            out int waveCount,
+            out string nextMonsterId)
+        {
+            nextSpawnIndex = 0;
+            waveCount = _activeLevelMonsterWave.Count;
+            nextMonsterId = "";
+            if (waveCount <= 0)
+            {
+                return false;
+            }
+
+            int index = _activeLevelWaveIndex;
+            if (index < 0 || index >= waveCount)
+            {
+                index = 0;
+            }
+
+            nextSpawnIndex = index + 1;
+            nextMonsterId = _activeLevelMonsterWave[index];
             return true;
         }
 
@@ -513,6 +614,47 @@ namespace Xiuxian.Scripts.Services
             return sb.ToString();
         }
 
+        public string BuildLevelPreviewSummary(int maxLines = 12)
+        {
+            EnsureLevelUnlockBootstrap();
+            if (_levels.Count == 0)
+            {
+                return "Levels: none";
+            }
+
+            int max = Math.Max(1, maxLines);
+            int shown = Math.Min(max, _levels.Count);
+            var sb = new StringBuilder();
+            sb.Append("Levels:");
+
+            for (int i = 0; i < shown; i++)
+            {
+                var level = _levels[i];
+                string levelId = GetString(level, "level_id", $"lv_{i + 1:000}");
+                string levelName = GetString(level, "level_name", "Unknown Zone");
+                string realm = GetString(level, "realm_recommend", "?");
+                int danger = level.ContainsKey("danger_level") ? level["danger_level"].AsInt32() : 0;
+                string boss = GetLevelBossMonsterId(level);
+                bool unlocked = _unlockedLevelIds.Contains(levelId);
+                bool active = levelId == ActiveLevelId;
+                string flag = active ? "*" : (unlocked ? "O" : "X");
+
+                sb.Append($"\n{flag} {levelId} {levelName} | rec={realm} | danger={danger}");
+                if (!string.IsNullOrEmpty(boss))
+                {
+                    sb.Append($" | boss={boss}");
+                }
+            }
+
+            if (_levels.Count > shown)
+            {
+                sb.Append($"\n... {_levels.Count - shown} more");
+            }
+
+            sb.Append("\nLegend: *=active, O=unlocked, X=locked");
+            return sb.ToString();
+        }
+
         public Godot.Collections.Array<string> GetValidationIssues()
         {
             var result = new Godot.Collections.Array<string>();
@@ -574,6 +716,101 @@ namespace Xiuxian.Scripts.Services
                 }
             }
             return result;
+        }
+
+        public string GetLevelName(string levelId)
+        {
+            if (string.IsNullOrEmpty(levelId))
+            {
+                return "";
+            }
+
+            foreach (var level in _levels)
+            {
+                string id = GetString(level, "level_id", "");
+                if (id == levelId)
+                {
+                    return GetString(level, "level_name", levelId);
+                }
+            }
+
+            return "";
+        }
+
+        public Godot.Collections.Array<string> GetUnlockedLevelIds()
+        {
+            var result = new Godot.Collections.Array<string>();
+            foreach (var level in _levels)
+            {
+                string levelId = GetString(level, "level_id", "");
+                if (string.IsNullOrEmpty(levelId))
+                {
+                    continue;
+                }
+
+                if (_unlockedLevelIds.Contains(levelId))
+                {
+                    result.Add(levelId);
+                }
+            }
+
+            return result;
+        }
+
+        public bool IsLevelUnlocked(string levelId)
+        {
+            if (string.IsNullOrEmpty(levelId))
+            {
+                return false;
+            }
+
+            EnsureLevelUnlockBootstrap();
+            return _unlockedLevelIds.Contains(levelId);
+        }
+
+        public bool IsBossMonsterForLevel(string levelId, string monsterId)
+        {
+            if (string.IsNullOrEmpty(levelId) || string.IsNullOrEmpty(monsterId))
+            {
+                return false;
+            }
+
+            if (!TryFindLevelIndex(levelId, out int levelIndex))
+            {
+                return false;
+            }
+
+            string bossId = GetLevelBossMonsterId(_levels[levelIndex]);
+            return !string.IsNullOrEmpty(bossId) && bossId == monsterId;
+        }
+
+        public bool TryMarkBossDefeatedAndUnlockNext(string levelId, string monsterId, out string unlockedLevelId)
+        {
+            unlockedLevelId = "";
+            if (!IsBossMonsterForLevel(levelId, monsterId))
+            {
+                return false;
+            }
+
+            _bossClearedLevelIds.Add(levelId);
+            string next = GetConfiguredNextLevelId(levelId);
+            if (string.IsNullOrEmpty(next))
+            {
+                next = GetNextLevelId(levelId);
+            }
+
+            if (string.IsNullOrEmpty(next))
+            {
+                return false;
+            }
+
+            if (_unlockedLevelIds.Add(next))
+            {
+                unlockedLevelId = next;
+                return true;
+            }
+
+            return false;
         }
 
         public Godot.Collections.Array<string> GetSpawnMonsterIds(string levelId = "")
@@ -720,9 +957,24 @@ namespace Xiuxian.Scripts.Services
 
         public Godot.Collections.Dictionary<string, Variant> ToRuntimeDictionary()
         {
+            var unlocked = new Godot.Collections.Array<Variant>();
+            foreach (string levelId in _unlockedLevelIds)
+            {
+                unlocked.Add(levelId);
+            }
+
+            var bossCleared = new Godot.Collections.Array<Variant>();
+            foreach (string levelId in _bossClearedLevelIds)
+            {
+                bossCleared.Add(levelId);
+            }
+
             return new Godot.Collections.Dictionary<string, Variant>
             {
                 ["active_level_id"] = ActiveLevelId,
+                ["active_wave_index"] = _activeLevelWaveIndex,
+                ["unlocked_level_ids"] = unlocked,
+                ["boss_cleared_level_ids"] = bossCleared,
                 ["level_clear_count_by_id"] = IntDictionaryToVariantDictionary(_levelClearCountById),
                 ["pity_counter_by_key"] = IntDictionaryToVariantDictionary(_pityCounterByKey),
                 ["daily_roll_count_by_table"] = IntDictionaryToVariantDictionary(_dailyRollCountByTable),
@@ -740,6 +992,8 @@ namespace Xiuxian.Scripts.Services
             _dailyRollDayByTable.Clear();
             _hourlyRollCountByTable.Clear();
             _hourlyRollHourByTable.Clear();
+            _unlockedLevelIds.Clear();
+            _bossClearedLevelIds.Clear();
 
             if (data.ContainsKey("level_clear_count_by_id") && data["level_clear_count_by_id"].VariantType == Variant.Type.Dictionary)
             {
@@ -774,6 +1028,143 @@ namespace Xiuxian.Scripts.Services
                     TrySetActiveLevel(levelId);
                 }
             }
+
+            if (data.ContainsKey("unlocked_level_ids") && data["unlocked_level_ids"].VariantType == Variant.Type.Array)
+            {
+                var unlocked = (Godot.Collections.Array<Variant>)data["unlocked_level_ids"];
+                foreach (Variant v in unlocked)
+                {
+                    string levelId = v.AsString();
+                    if (!string.IsNullOrEmpty(levelId))
+                    {
+                        _unlockedLevelIds.Add(levelId);
+                    }
+                }
+            }
+
+            if (data.ContainsKey("boss_cleared_level_ids") && data["boss_cleared_level_ids"].VariantType == Variant.Type.Array)
+            {
+                var cleared = (Godot.Collections.Array<Variant>)data["boss_cleared_level_ids"];
+                foreach (Variant v in cleared)
+                {
+                    string levelId = v.AsString();
+                    if (!string.IsNullOrEmpty(levelId))
+                    {
+                        _bossClearedLevelIds.Add(levelId);
+                    }
+                }
+            }
+
+            EnsureLevelUnlockBootstrap();
+
+            if (data.ContainsKey("active_wave_index"))
+            {
+                int savedWaveIndex = data["active_wave_index"].AsInt32();
+                if (_activeLevelMonsterWave.Count > 0)
+                {
+                    _activeLevelWaveIndex = Math.Clamp(savedWaveIndex, 0, _activeLevelMonsterWave.Count - 1);
+                }
+                else
+                {
+                    _activeLevelWaveIndex = 0;
+                }
+            }
+        }
+
+        private void EnsureLevelUnlockBootstrap()
+        {
+            if (_levels.Count == 0)
+            {
+                return;
+            }
+
+            if (_unlockedLevelIds.Count > 0)
+            {
+                return;
+            }
+
+            string firstLevelId = GetString(_levels[0], "level_id", "");
+            if (!string.IsNullOrEmpty(firstLevelId))
+            {
+                _unlockedLevelIds.Add(firstLevelId);
+            }
+        }
+
+        private string GetNextLevelId(string levelId)
+        {
+            if (!TryFindLevelIndex(levelId, out int index))
+            {
+                return "";
+            }
+
+            int next = index + 1;
+            if (next < 0 || next >= _levels.Count)
+            {
+                return "";
+            }
+
+            return GetString(_levels[next], "level_id", "");
+        }
+
+        private string GetConfiguredNextLevelId(string levelId)
+        {
+            if (!TryFindLevelIndex(levelId, out int index))
+            {
+                return "";
+            }
+
+            return GetString(_levels[index], "unlock_next_level_id", "");
+        }
+
+        private string GetNextUnlockedLevelId(string levelId)
+        {
+            var unlocked = GetUnlockedLevelIds();
+            if (unlocked.Count <= 0)
+            {
+                return "";
+            }
+
+            int currentIndex = -1;
+            for (int i = 0; i < unlocked.Count; i++)
+            {
+                if (unlocked[i] == levelId)
+                {
+                    currentIndex = i;
+                    break;
+                }
+            }
+
+            if (currentIndex < 0)
+            {
+                return unlocked[0];
+            }
+
+            int next = (currentIndex + 1) % unlocked.Count;
+            return unlocked[next];
+        }
+
+        private static string GetLevelBossMonsterId(Godot.Collections.Dictionary<string, Variant> level)
+        {
+            string configured = GetString(level, "boss_monster_id", "");
+            if (!string.IsNullOrEmpty(configured))
+            {
+                return configured;
+            }
+
+            if (level.ContainsKey("monster_wave") && level["monster_wave"].VariantType == Variant.Type.Array)
+            {
+                var wave = (Godot.Collections.Array<Variant>)level["monster_wave"];
+                for (int i = wave.Count - 1; i >= 0; i--)
+                {
+                    string id = wave[i].AsString();
+                    if (!string.IsNullOrEmpty(id))
+                    {
+                        return id;
+                    }
+                }
+            }
+
+            return "";
         }
 
         private void AddDropRollResults(string dropTableId, int rollCount, Dictionary<string, int> result)
@@ -1792,6 +2183,9 @@ namespace Xiuxian.Scripts.Services
                 PlayerAttackPerRound = 4;
                 EnemyDamageDivider = 4;
                 EnemyMinDamagePerRound = 1;
+                _activeLevelMonsterWave.Clear();
+                _activeMoveInputsByCategory.Clear();
+                _activeLevelWaveIndex = 0;
                 return;
             }
 
@@ -1804,6 +2198,8 @@ namespace Xiuxian.Scripts.Services
                 EncounterCheckIntervalProgress = 20.0;
                 BaseEncounterRate = 0.18;
                 BattlePauseFactor = 0.0;
+                _activeMoveInputsByCategory.Clear();
+                _activeMoveInputsByCategory["default"] = 4;
             }
             else
             {
@@ -1811,6 +2207,34 @@ namespace Xiuxian.Scripts.Services
                 EncounterCheckIntervalProgress = GetDouble(explore, "encounter_check_interval_progress", 20.0);
                 BaseEncounterRate = GetDouble(explore, "base_encounter_rate", 0.18);
                 BattlePauseFactor = GetDouble(explore, "battle_pause_factor", 0.0);
+                _activeMoveInputsByCategory.Clear();
+                _activeMoveInputsByCategory["default"] = 4;
+                if (explore.ContainsKey("move_inputs_by_category") &&
+                    explore["move_inputs_by_category"].VariantType == Variant.Type.Dictionary)
+                {
+                    var moveMap = (Godot.Collections.Dictionary<string, Variant>)explore["move_inputs_by_category"];
+                    foreach (string key in moveMap.Keys)
+                    {
+                        int value = Math.Max(1, moveMap[key].AsInt32());
+                        _activeMoveInputsByCategory[key] = value;
+                    }
+                }
+            }
+
+            _activeLevelMonsterWave.Clear();
+            _activeLevelWaveIndex = 0;
+            if (level.ContainsKey("monster_wave") && level["monster_wave"].VariantType == Variant.Type.Array)
+            {
+                var wave = (Godot.Collections.Array<Variant>)level["monster_wave"];
+                foreach (Variant item in wave)
+                {
+                    string id = item.AsString();
+                    if (string.IsNullOrEmpty(id))
+                    {
+                        continue;
+                    }
+                    _activeLevelMonsterWave.Add(id);
+                }
             }
 
             if (!TryGetChildDictionary(level, "battle_runtime", out var battleRuntime))

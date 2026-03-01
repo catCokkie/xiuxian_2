@@ -11,7 +11,13 @@
         "progress_per_100_inputs": 2.0,
         "encounter_check_interval_progress": 20.0,
         "base_encounter_rate": 0.18,
-        "battle_pause_factor": 0.0
+        "battle_pause_factor": 0.0,
+        "move_inputs_by_category": {
+          "default": 4,
+          "normal": 4,
+          "flying": 4,
+          "elite": 4
+        }
       },
       "battle_runtime": {
         "player_base_hp": 36,
@@ -24,6 +30,14 @@
         { "monster_id": "monster_bat_shadow", "weight": 30, "min_count": 1, "max_count": 2 },
         { "monster_id": "monster_spider_cave", "weight": 10, "min_count": 1, "max_count": 1 }
       ],
+      "monster_wave": [
+        "monster_slime_moss",
+        "monster_bat_shadow",
+        "monster_slime_moss",
+        "monster_spider_cave"
+      ],
+      "boss_monster_id": "monster_spider_cave",
+      "unlock_next_level_id": "lv_qi_002",
       "rewards": {
         "first_clear": {
           "lingqi": 120,
@@ -50,7 +64,13 @@
         "progress_per_100_inputs": 2.4,
         "encounter_check_interval_progress": 20.0,
         "base_encounter_rate": 0.22,
-        "battle_pause_factor": 0.0
+        "battle_pause_factor": 0.0,
+        "move_inputs_by_category": {
+          "default": 4,
+          "normal": 4,
+          "flying": 4,
+          "elite": 4
+        }
       },
       "battle_runtime": {
         "player_base_hp": 42,
@@ -63,6 +83,14 @@
         { "monster_id": "monster_bat_shadow", "weight": 40, "min_count": 1, "max_count": 2 },
         { "monster_id": "monster_spider_cave", "weight": 25, "min_count": 1, "max_count": 1 }
       ],
+      "monster_wave": [
+        "monster_bat_shadow",
+        "monster_slime_moss",
+        "monster_bat_shadow",
+        "monster_spider_cave"
+      ],
+      "boss_monster_id": "monster_spider_cave",
+      "unlock_next_level_id": "lv_qi_003",
       "rewards": {
         "first_clear": {
           "lingqi": 180,
@@ -77,6 +105,164 @@
         },
         "exp_bonus_factor": 1.12
       }
+    },
+    {
+      "level_id": "lv_qi_003",
+      "level_name": "Yin Tide Rift",
+      "realm_recommend": "Qi 5-7",
+      "zone_speed_factor": 1.15,
+      "danger_level": 3,
+      "theme_tags": ["rift", "yin", "storm"],
+      "explore": {
+        "progress_per_100_inputs": 2.8,
+        "encounter_check_interval_progress": 18.0,
+        "base_encounter_rate": 0.24,
+        "battle_pause_factor": 0.0,
+        "move_inputs_by_category": {
+          "default": 4,
+          "normal": 4,
+          "flying": 3,
+          "elite": 5
+        }
+      },
+      "battle_runtime": {
+        "player_base_hp": 48,
+        "player_attack_per_round": 6,
+        "enemy_damage_divider": 4,
+        "enemy_min_damage_per_round": 2
+      },
+      "spawn_table": [
+        { "monster_id": "monster_slime_moss", "weight": 20, "min_count": 1, "max_count": 2 },
+        { "monster_id": "monster_bat_shadow", "weight": 50, "min_count": 1, "max_count": 2 },
+        { "monster_id": "monster_spider_cave", "weight": 30, "min_count": 1, "max_count": 1 }
+      ],
+      "monster_wave": [
+        "monster_bat_shadow",
+        "monster_bat_shadow",
+        "monster_slime_moss",
+        "monster_spider_cave"
+      ],
+      "boss_monster_id": "monster_spider_cave",
+      "unlock_next_level_id": "lv_qi_004",
+      "rewards": {
+        "first_clear": {
+          "lingqi": 250,
+          "insight": 38,
+          "items": [{ "item_id": "novice_breakthrough_pill", "qty": 2 }]
+        },
+        "repeat_clear": {
+          "lingqi_min": 85,
+          "lingqi_max": 145,
+          "insight_min": 12,
+          "insight_max": 20
+        },
+        "exp_bonus_factor": 1.2
+      }
+    },
+    {
+      "level_id": "lv_qi_004",
+      "level_name": "Abyss Fungus Pit",
+      "realm_recommend": "Qi 7-9",
+      "zone_speed_factor": 1.22,
+      "danger_level": 4,
+      "theme_tags": ["abyss", "fungus", "poison"],
+      "explore": {
+        "progress_per_100_inputs": 3.1,
+        "encounter_check_interval_progress": 16.0,
+        "base_encounter_rate": 0.26,
+        "battle_pause_factor": 0.0,
+        "move_inputs_by_category": {
+          "default": 4,
+          "normal": 4,
+          "flying": 3,
+          "elite": 6
+        }
+      },
+      "battle_runtime": {
+        "player_base_hp": 54,
+        "player_attack_per_round": 7,
+        "enemy_damage_divider": 3,
+        "enemy_min_damage_per_round": 2
+      },
+      "spawn_table": [
+        { "monster_id": "monster_slime_moss", "weight": 25, "min_count": 1, "max_count": 2 },
+        { "monster_id": "monster_bat_shadow", "weight": 25, "min_count": 1, "max_count": 2 },
+        { "monster_id": "monster_spider_cave", "weight": 50, "min_count": 1, "max_count": 1 }
+      ],
+      "monster_wave": [
+        "monster_spider_cave",
+        "monster_slime_moss",
+        "monster_bat_shadow",
+        "monster_spider_cave"
+      ],
+      "boss_monster_id": "monster_spider_cave",
+      "unlock_next_level_id": "lv_qi_005",
+      "rewards": {
+        "first_clear": {
+          "lingqi": 320,
+          "insight": 50,
+          "items": [{ "item_id": "novice_breakthrough_pill", "qty": 2 }]
+        },
+        "repeat_clear": {
+          "lingqi_min": 110,
+          "lingqi_max": 180,
+          "insight_min": 16,
+          "insight_max": 25
+        },
+        "exp_bonus_factor": 1.28
+      }
+    },
+    {
+      "level_id": "lv_qi_005",
+      "level_name": "Nether Bone Hall",
+      "realm_recommend": "Qi 9-11",
+      "zone_speed_factor": 1.3,
+      "danger_level": 5,
+      "theme_tags": ["nether", "bones", "cold-fire"],
+      "explore": {
+        "progress_per_100_inputs": 3.5,
+        "encounter_check_interval_progress": 15.0,
+        "base_encounter_rate": 0.28,
+        "battle_pause_factor": 0.0,
+        "move_inputs_by_category": {
+          "default": 4,
+          "normal": 4,
+          "flying": 3,
+          "elite": 6
+        }
+      },
+      "battle_runtime": {
+        "player_base_hp": 62,
+        "player_attack_per_round": 8,
+        "enemy_damage_divider": 3,
+        "enemy_min_damage_per_round": 3
+      },
+      "spawn_table": [
+        { "monster_id": "monster_slime_moss", "weight": 15, "min_count": 1, "max_count": 2 },
+        { "monster_id": "monster_bat_shadow", "weight": 35, "min_count": 1, "max_count": 2 },
+        { "monster_id": "monster_spider_cave", "weight": 50, "min_count": 1, "max_count": 1 }
+      ],
+      "monster_wave": [
+        "monster_bat_shadow",
+        "monster_spider_cave",
+        "monster_bat_shadow",
+        "monster_spider_cave"
+      ],
+      "boss_monster_id": "monster_spider_cave",
+      "rewards": {
+        "first_clear": {
+          "lingqi": 420,
+          "insight": 65,
+          "items": [{ "item_id": "novice_breakthrough_pill", "qty": 3 }]
+        },
+        "repeat_clear": {
+          "lingqi_min": 150,
+          "lingqi_max": 230,
+          "insight_min": 22,
+          "insight_max": 34
+        },
+        "exp_bonus_factor": 1.38
+      }
     }
   ],
   "monsters": [
@@ -84,6 +270,7 @@
       "monster_id": "monster_slime_moss",
       "monster_name": "Moss Slime",
       "rarity": "normal",
+      "move_category": "normal",
       "realm_recommend": "Qi 1",
       "tags": ["yao", "slime"],
       "combat": {
@@ -121,6 +308,7 @@
       "monster_id": "monster_bat_shadow",
       "monster_name": "Shadow Bat",
       "rarity": "normal",
+      "move_category": "flying",
       "realm_recommend": "Qi 2",
       "tags": ["yao", "flying"],
       "combat": {
@@ -158,6 +346,7 @@
       "monster_id": "monster_spider_cave",
       "monster_name": "Cave Brood Spider",
       "rarity": "elite",
+      "move_category": "elite",
       "realm_recommend": "Qi 3",
       "tags": ["yao", "elite"],
       "combat": {
@@ -278,6 +467,138 @@
         "repeat_decay_factor": 0.99,
         "daily_cap_rolls": 50,
         "hourly_soft_cap_rolls": 10,
+        "anti_abuse_flag": true
+      }
+    },
+    {
+      "drop_table_id": "drop_qi_rift_normal",
+      "bind_level_id": "lv_qi_003",
+      "bind_monster_ids": ["monster_slime_moss", "monster_bat_shadow"],
+      "entries": [
+        { "item_id": "lingqi_shard", "weight": 40, "min_qty": 2, "max_qty": 5 },
+        { "item_id": "spirit_herb", "weight": 35, "min_qty": 2, "max_qty": 3 },
+        { "item_id": "broken_talisman", "weight": 25, "min_qty": 2, "max_qty": 4 }
+      ],
+      "pity": {
+        "counter_key": "pity_qi_rift_normal",
+        "threshold": 6,
+        "item_id": "spirit_herb",
+        "qty": 2
+      },
+      "economy": {
+        "repeat_decay_factor": 0.97,
+        "daily_cap_rolls": 160,
+        "hourly_soft_cap_rolls": 26,
+        "anti_abuse_flag": true
+      }
+    },
+    {
+      "drop_table_id": "drop_qi_rift_elite",
+      "bind_level_id": "lv_qi_003",
+      "bind_monster_ids": ["monster_spider_cave"],
+      "entries": [
+        { "item_id": "novice_breakthrough_pill", "weight": 35, "min_qty": 1, "max_qty": 1 },
+        { "item_id": "spirit_herb", "weight": 30, "min_qty": 2, "max_qty": 3 },
+        { "item_id": "lingqi_core_fragment", "weight": 35, "min_qty": 2, "max_qty": 4 }
+      ],
+      "pity": {
+        "counter_key": "pity_qi_rift_elite",
+        "threshold": 4,
+        "item_id": "novice_breakthrough_pill",
+        "qty": 1
+      },
+      "economy": {
+        "repeat_decay_factor": 0.99,
+        "daily_cap_rolls": 60,
+        "hourly_soft_cap_rolls": 12,
+        "anti_abuse_flag": true
+      }
+    },
+    {
+      "drop_table_id": "drop_qi_abyss_normal",
+      "bind_level_id": "lv_qi_004",
+      "bind_monster_ids": ["monster_slime_moss", "monster_bat_shadow"],
+      "entries": [
+        { "item_id": "lingqi_shard", "weight": 38, "min_qty": 3, "max_qty": 6 },
+        { "item_id": "spirit_herb", "weight": 32, "min_qty": 2, "max_qty": 4 },
+        { "item_id": "broken_talisman", "weight": 30, "min_qty": 3, "max_qty": 5 }
+      ],
+      "pity": {
+        "counter_key": "pity_qi_abyss_normal",
+        "threshold": 6,
+        "item_id": "spirit_herb",
+        "qty": 3
+      },
+      "economy": {
+        "repeat_decay_factor": 0.97,
+        "daily_cap_rolls": 180,
+        "hourly_soft_cap_rolls": 30,
+        "anti_abuse_flag": true
+      }
+    },
+    {
+      "drop_table_id": "drop_qi_abyss_elite",
+      "bind_level_id": "lv_qi_004",
+      "bind_monster_ids": ["monster_spider_cave"],
+      "entries": [
+        { "item_id": "novice_breakthrough_pill", "weight": 40, "min_qty": 1, "max_qty": 1 },
+        { "item_id": "spirit_herb", "weight": 25, "min_qty": 3, "max_qty": 4 },
+        { "item_id": "lingqi_core_fragment", "weight": 35, "min_qty": 3, "max_qty": 5 }
+      ],
+      "pity": {
+        "counter_key": "pity_qi_abyss_elite",
+        "threshold": 3,
+        "item_id": "novice_breakthrough_pill",
+        "qty": 1
+      },
+      "economy": {
+        "repeat_decay_factor": 0.99,
+        "daily_cap_rolls": 70,
+        "hourly_soft_cap_rolls": 14,
+        "anti_abuse_flag": true
+      }
+    },
+    {
+      "drop_table_id": "drop_qi_nether_normal",
+      "bind_level_id": "lv_qi_005",
+      "bind_monster_ids": ["monster_slime_moss", "monster_bat_shadow"],
+      "entries": [
+        { "item_id": "lingqi_shard", "weight": 35, "min_qty": 4, "max_qty": 7 },
+        { "item_id": "spirit_herb", "weight": 30, "min_qty": 3, "max_qty": 5 },
+        { "item_id": "broken_talisman", "weight": 35, "min_qty": 4, "max_qty": 6 }
+      ],
+      "pity": {
+        "counter_key": "pity_qi_nether_normal",
+        "threshold": 5,
+        "item_id": "spirit_herb",
+        "qty": 3
+      },
+      "economy": {
+        "repeat_decay_factor": 0.98,
+        "daily_cap_rolls": 220,
+        "hourly_soft_cap_rolls": 36,
+        "anti_abuse_flag": true
+      }
+    },
+    {
+      "drop_table_id": "drop_qi_nether_elite",
+      "bind_level_id": "lv_qi_005",
+      "bind_monster_ids": ["monster_spider_cave"],
+      "entries": [
+        { "item_id": "novice_breakthrough_pill", "weight": 45, "min_qty": 1, "max_qty": 1 },
+        { "item_id": "spirit_herb", "weight": 20, "min_qty": 4, "max_qty": 5 },
+        { "item_id": "lingqi_core_fragment", "weight": 35, "min_qty": 4, "max_qty": 6 }
+      ],
+      "pity": {
+        "counter_key": "pity_qi_nether_elite",
+        "threshold": 3,
+        "item_id": "novice_breakthrough_pill",
+        "qty": 1
+      },
+      "economy": {
+        "repeat_decay_factor": 0.99,
+        "daily_cap_rolls": 90,
+        "hourly_soft_cap_rolls": 16,
         "anti_abuse_flag": true
       }
     }
