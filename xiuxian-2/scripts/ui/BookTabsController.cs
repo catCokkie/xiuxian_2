@@ -1,6 +1,7 @@
 ﻿using Godot;
 using System.Collections.Generic;
 using System.Globalization;
+using Xiuxian.Scripts.Game;
 using Xiuxian.Scripts.Services;
 
 public partial class BookTabsController : Control
@@ -25,6 +26,9 @@ public partial class BookTabsController : Control
     private RichTextLabel _leftContentLabel = null!;
     private Label _leftTitleLabel = null!;
     private Label _coinLabel = null!;
+    private Panel _recentBattlePanel = null!;
+    private Label _recentBattlePanelTitle = null!;
+    private ItemList _recentBattleList = null!;
     private Control _leftPage = null!;
     private Control _rightPage = null!;
     private Button _closeButton = null!;
@@ -63,6 +67,7 @@ public partial class BookTabsController : Control
     private BackpackState? _backpackState;
     private ResourceWalletState? _resourceWalletState;
     private PlayerProgressState? _playerProgressState;
+    private ExploreProgressController? _exploreProgressController;
 
     public string ActiveLeftTabName { get; private set; } = "CultivationTab";
     public string ActiveRightTabName { get; private set; } = "OnlineTab";
@@ -105,6 +110,7 @@ public partial class BookTabsController : Control
         _backpackState = GetNodeOrNull<BackpackState>("/root/BackpackState");
         _resourceWalletState = GetNodeOrNull<ResourceWalletState>("/root/ResourceWalletState");
         _playerProgressState = GetNodeOrNull<PlayerProgressState>("/root/PlayerProgressState");
+        _exploreProgressController = GetNodeOrNull<ExploreProgressController>("/root/PrototypeRoot/ExploreProgressController");
 
         if (_activityState != null)
         {
@@ -122,10 +128,15 @@ public partial class BookTabsController : Control
         {
             _playerProgressState.RealmProgressChanged += OnRealmProgressChanged;
         }
+        if (_exploreProgressController != null)
+        {
+            _exploreProgressController.RecentBattleLogsChanged += OnRecentBattleLogsChanged;
+        }
 
         ApplyStaticTexts();
 
         BuildSettingsUi();
+        BuildRecentBattlePanel();
         ApplySettingsRuntime();
         UpdateSettingsControlsFromState();
         UpdateSettingsUiVisibility();
@@ -155,6 +166,10 @@ public partial class BookTabsController : Control
         if (_playerProgressState != null)
         {
             _playerProgressState.RealmProgressChanged -= OnRealmProgressChanged;
+        }
+        if (_exploreProgressController != null)
+        {
+            _exploreProgressController.RecentBattleLogsChanged -= OnRecentBattleLogsChanged;
         }
     }
 
@@ -245,6 +260,12 @@ public partial class BookTabsController : Control
         RefreshDynamicTabContent();
     }
 
+    private void OnRecentBattleLogsChanged()
+    {
+        RefreshRecentBattlePanel();
+        RefreshDynamicTabContent();
+    }
+
     private void RefreshDynamicTabContent()
     {
         if (ActiveRightTabName == "SettingsTab")
@@ -255,6 +276,11 @@ public partial class BookTabsController : Control
         if (!_isShowingRightTab && (ActiveLeftTabName == "CultivationTab" || ActiveLeftTabName == "StatsTab"))
         {
             _leftContentLabel.Text = GetLeftTabContent(ActiveLeftTabName);
+        }
+
+        if (!_isShowingRightTab && ActiveLeftTabName == "StatsTab")
+        {
+            RefreshRecentBattlePanel();
         }
     }
 
@@ -300,15 +326,16 @@ public partial class BookTabsController : Control
         int herbCount = _backpackState?.GetItemCount("spirit_herb") ?? 0;
         int shardCount = _backpackState?.GetItemCount("lingqi_shard") ?? 0;
 
-        return
-            UiText.StatsOverview(
-                _activityState.TotalKeyDownCount,
-                _activityState.TotalMouseClickCount,
-                _activityState.TotalMouseScrollSteps,
-                _activityState.TotalMouseMoveDistancePx,
-                _activityState.ApAccumulator,
-                herbCount,
-                shardCount);
+        string baseStats = UiText.StatsOverview(
+            _activityState.TotalKeyDownCount,
+            _activityState.TotalMouseClickCount,
+            _activityState.TotalMouseScrollSteps,
+            _activityState.TotalMouseMoveDistancePx,
+            _activityState.ApAccumulator,
+            herbCount,
+            shardCount);
+
+        return baseStats;
     }
 
     private void RefreshCoinLabel()
@@ -333,6 +360,109 @@ public partial class BookTabsController : Control
         SyncButtons("TopStrip/RightTabs", _rightTabContentMap.Keys, ActiveRightTabName);
         RefreshCurrentPageContent();
         EmitSignal(SignalName.ActiveTabsChanged, ActiveLeftTabName, ActiveRightTabName);
+    }
+
+    private void BuildRecentBattlePanel()
+    {
+        // Reserve the lower area of the left page for a dedicated recent battle list.
+        _leftContentLabel.OffsetBottom = -166.0f;
+
+        _recentBattlePanel = new Panel();
+        _recentBattlePanel.Name = "RecentBattlePanel";
+        _recentBattlePanel.SetAnchorsPreset(LayoutPreset.FullRect);
+        _recentBattlePanel.OffsetLeft = 16.0f;
+        _recentBattlePanel.OffsetTop = 236.0f;
+        _recentBattlePanel.OffsetRight = -16.0f;
+        _recentBattlePanel.OffsetBottom = -16.0f;
+        _leftPage.AddChild(_recentBattlePanel);
+
+        VBoxContainer root = new();
+        root.SetAnchorsPreset(LayoutPreset.FullRect);
+        root.OffsetLeft = 10.0f;
+        root.OffsetTop = 8.0f;
+        root.OffsetRight = -10.0f;
+        root.OffsetBottom = -8.0f;
+        root.AddThemeConstantOverride("separation", 6);
+        _recentBattlePanel.AddChild(root);
+
+        _recentBattlePanelTitle = new Label();
+        _recentBattlePanelTitle.Text = "最近战斗日志";
+        root.AddChild(_recentBattlePanelTitle);
+
+        _recentBattleList = new ItemList();
+        _recentBattleList.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        _recentBattleList.AutoHeight = false;
+        _recentBattleList.FocusMode = Control.FocusModeEnum.None;
+        _recentBattleList.MouseFilter = Control.MouseFilterEnum.Ignore;
+        root.AddChild(_recentBattleList);
+
+        RefreshRecentBattlePanel();
+        UpdateBattleLogPanelVisibility();
+    }
+
+    private void RefreshRecentBattlePanel()
+    {
+        if (_recentBattleList == null)
+        {
+            return;
+        }
+
+        _recentBattleList.Clear();
+        if (_exploreProgressController == null)
+        {
+            _recentBattleList.AddItem("暂无记录");
+            return;
+        }
+
+        var logs = _exploreProgressController.GetRecentBattleLogsSnapshot(10);
+        if (logs.Count == 0)
+        {
+            _recentBattleList.AddItem("暂无记录");
+            return;
+        }
+
+        foreach (var item in logs)
+        {
+            long ts = item.ContainsKey("ts") ? item["ts"].AsInt64() : 0L;
+            string timeText = ts > 0
+                ? System.DateTimeOffset.FromUnixTimeSeconds(ts).ToLocalTime().ToString("HH:mm:ss")
+                : "--:--:--";
+            string result = item.ContainsKey("result") ? item["result"].AsString() : "victory";
+            string resultText = result == "defeat" ? "战败" : "胜利";
+            string monsterName = item.ContainsKey("monster_name") ? item["monster_name"].AsString() : UiText.DefaultMonsterName;
+            double lingqi = item.ContainsKey("lingqi") ? item["lingqi"].AsDouble() : 0.0;
+            double insight = item.ContainsKey("insight") ? item["insight"].AsDouble() : 0.0;
+
+            string itemText = "none";
+            if (item.ContainsKey("items") && item["items"].VariantType == Variant.Type.Dictionary)
+            {
+                var drops = (Godot.Collections.Dictionary<string, Variant>)item["items"];
+                if (drops.Count > 0)
+                {
+                    var parts = new List<string>();
+                    foreach (string key in drops.Keys)
+                    {
+                        parts.Add($"{key} x{drops[key].AsInt32()}");
+                    }
+                    itemText = string.Join(", ", parts);
+                }
+            }
+
+            _recentBattleList.AddItem($"[{timeText}] {resultText} {monsterName}");
+            _recentBattleList.AddItem($"  lq={lingqi:0} in={insight:0} | {itemText}");
+        }
+    }
+
+    private void UpdateBattleLogPanelVisibility()
+    {
+        if (_recentBattlePanel == null)
+        {
+            return;
+        }
+
+        bool isSettings = ActiveRightTabName == "SettingsTab";
+        bool visible = !isSettings && !_isShowingRightTab && ActiveLeftTabName == "StatsTab";
+        _recentBattlePanel.Visible = visible;
     }
 
     private void BuildSettingsUi()
@@ -532,6 +662,7 @@ public partial class BookTabsController : Control
         _settingsProgressRoot.Visible = isSettings && _activeSettingsSection == "progress";
         _leftContentLabel.Visible = !isSettings;
         _rightPage.Visible = false;
+        UpdateBattleLogPanelVisibility();
     }
 
     private void UpdateSettingsControlsFromState()
@@ -746,11 +877,15 @@ public partial class BookTabsController : Control
         {
             _leftTitleLabel.Text = ButtonTextForTab("TopStrip/RightTabs", ActiveRightTabName);
             AnimateContentSwap(_leftContentLabel, _leftTween, _rightTabContentMap[ActiveRightTabName], tween => _leftTween = tween, false);
+            RefreshRecentBattlePanel();
+            UpdateBattleLogPanelVisibility();
             return;
         }
 
         _leftTitleLabel.Text = ButtonTextForTab("TopStrip/LeftTabs", ActiveLeftTabName);
         AnimateContentSwap(_leftContentLabel, _leftTween, GetLeftTabContent(ActiveLeftTabName), tween => _leftTween = tween, true);
+        RefreshRecentBattlePanel();
+        UpdateBattleLogPanelVisibility();
     }
 
     private void CloseWindow()

@@ -1,0 +1,17 @@
+default:
+    @just --list
+
+build:
+    dotnet build xiuxian2.csproj
+
+check-bom:
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tools/check-bom.ps1
+
+verify: build check-bom
+    @echo Build and scene encoding checks passed.
+    @echo Manual Godot checks:
+    @echo 1) Open res://scenes/PrototypeRoot.tscn and confirm no Parse Error.
+    @echo 2) Stats page recent battle log refreshes after combat.
+    @echo 3) After reload, explore runtime and recent battle log are restored.
+
+verify-save: verify

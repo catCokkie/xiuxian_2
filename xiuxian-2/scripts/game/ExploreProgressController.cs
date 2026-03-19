@@ -1,5 +1,6 @@
 ﻿using Godot;
 using System.Collections.Generic;
+using System;
 using System.Text;
 using Xiuxian.Scripts.Services;
 
@@ -12,6 +13,9 @@ namespace Xiuxian.Scripts.Game
     /// </summary>
     public partial class ExploreProgressController : Node
     {
+        [Signal]
+        public delegate void RecentBattleLogsChangedEventHandler();
+
         [Export] public NodePath ProgressBarPath = "../MainBarWindow/Chrome/ExploreProgressBar";
         [Export] public NodePath CultivationProgressBarPath = "../MainBarWindow/Chrome/CultivationProgressBar";
         [Export] public NodePath BreakthroughButtonPath = "../MainBarWindow/Chrome/BreakthroughButton";
@@ -69,7 +73,7 @@ namespace Xiuxian.Scripts.Game
         private Label _debugPanelLabel = null!;
         private Panel? _validationPanel;
         private Label? _validationTitleLabel;
-        private Label? _validationBodyLabel;
+        private RichTextLabel? _validationBodyLabel;
         private OptionButton? _actionModeOptionButton;
         private OptionButton? _levelOptionButton;
         private TextureRect? _playerSlotTexture;
@@ -122,11 +126,26 @@ namespace Xiuxian.Scripts.Game
         private bool _validationOnlyActiveLevel;
         private bool _syncingActionModeOption;
         private bool _syncingLevelOption;
+        private bool _actionModeOptionBound;
+        private bool _levelOptionBound;
         private string _lastDropSummary = "none";
         private string _lastSimulationSummary = "no simulation";
         private string _simulationLevelFilterId = "";
         private string _simulationMonsterFilterId = "";
+        private const int MaxRecentBattleLogs = 10;
+        private readonly List<BattleLogEntry> _recentBattleLogs = new();
         private static readonly string[] ValidationScopeFilters = { "all", "level", "monster", "drop_table", "config" };
+
+        private sealed class BattleLogEntry
+        {
+            public long TimestampUnix;
+            public string Result = "victory";
+            public string MonsterId = "";
+            public string MonsterName = UiText.DefaultMonsterName;
+            public double Lingqi;
+            public double Insight;
+            public Dictionary<string, int> Items = new();
+        }
 
         public override void _Ready()
         {
@@ -145,7 +164,11 @@ namespace Xiuxian.Scripts.Game
             _enemyHpLabel = GetNode<Label>(EnemyHpLabelPath);
             _validationPanel = GetNodeOrNull<Panel>(ValidationPanelPath);
             _validationTitleLabel = GetNodeOrNull<Label>(ValidationTitleLabelPath);
-            _validationBodyLabel = GetNodeOrNull<Label>(ValidationBodyLabelPath);
+            _validationBodyLabel = GetNodeOrNull<RichTextLabel>(ValidationBodyLabelPath);
+            if (_validationBodyLabel != null)
+            {
+                _validationBodyLabel.BbcodeEnabled = true;
+            }
             _actionModeOptionButton = GetNodeOrNull<OptionButton>(ActionModeOptionButtonPath);
             _levelOptionButton = GetNodeOrNull<OptionButton>(LevelOptionButtonPath);
             _playerSlotTexture = GetNodeOrNull<TextureRect>(PlayerSlotTexturePath);
@@ -240,11 +263,19 @@ namespace Xiuxian.Scripts.Game
             }
             if (_actionModeOptionButton != null)
             {
-                _actionModeOptionButton.ItemSelected -= OnActionModeOptionSelected;
+                if (_actionModeOptionBound)
+                {
+                    _actionModeOptionButton.ItemSelected -= OnActionModeOptionSelected;
+                    _actionModeOptionBound = false;
+                }
             }
             if (_levelOptionButton != null)
             {
-                _levelOptionButton.ItemSelected -= OnLevelOptionSelected;
+                if (_levelOptionBound)
+                {
+                    _levelOptionButton.ItemSelected -= OnLevelOptionSelected;
+                    _levelOptionBound = false;
+                }
             }
         }
 
@@ -467,8 +498,11 @@ namespace Xiuxian.Scripts.Game
             _actionModeOptionButton.AddItem(UiText.ActionModeDungeon, 0);
             _actionModeOptionButton.AddItem(UiText.ActionModeCultivation, 1);
             _actionModeOptionButton.TooltipText = "切换主行为（等同 F4）";
-            _actionModeOptionButton.ItemSelected -= OnActionModeOptionSelected;
-            _actionModeOptionButton.ItemSelected += OnActionModeOptionSelected;
+            if (!_actionModeOptionBound)
+            {
+                _actionModeOptionButton.ItemSelected += OnActionModeOptionSelected;
+                _actionModeOptionBound = true;
+            }
         }
 
         private void ConfigureLevelOptionButton()
@@ -478,8 +512,11 @@ namespace Xiuxian.Scripts.Game
                 return;
             }
 
-            _levelOptionButton.ItemSelected -= OnLevelOptionSelected;
-            _levelOptionButton.ItemSelected += OnLevelOptionSelected;
+            if (!_levelOptionBound)
+            {
+                _levelOptionButton.ItemSelected += OnLevelOptionSelected;
+                _levelOptionBound = true;
+            }
             _levelOptionButton.TooltipText = "切换已解锁副本";
         }
 
@@ -873,36 +910,6 @@ namespace Xiuxian.Scripts.Game
             return $"调试-副本：未配置 monster_wave（使用 spawn_table） | 当前前排#{frontIndex + 1} [{frontMonsterId}]";
         }
 
-        private void TryStartBattle()
-        {
-            int candidate = FindFrontMonsterIndex();
-            if (candidate < 0)
-            {
-                return;
-            }
-
-            if (_monsterMarkers[candidate].Position.X > BattleTriggerX)
-            {
-                return;
-            }
-
-            _inBattle = true;
-            _battleMonsterIndex = candidate;
-            _battleRoundCounter = 0;
-            _pendingBattleInputEvents = 0;
-            if (candidate >= 0 && candidate < _monsterMarkerIds.Count)
-            {
-                _battleMonsterId = _monsterMarkerIds[candidate];
-            }
-            ConfigureBattleMonster();
-            _battleInfoLabel.Text = UiText.Encounter(_battleMonsterName);
-            _battleInfoLabel.Visible = true;
-            _roundInfoLabel.Text = UiText.BattleRound(0, _battleMonsterName, _enemyMaxHp);
-            UpdateHpLabels();
-            RefreshActorSlots();
-            RefreshMoveDebugLabel();
-        }
-
         private int FindFrontMonsterIndex()
         {
             int index = -1;
@@ -919,118 +926,6 @@ namespace Xiuxian.Scripts.Game
             }
 
             return index;
-        }
-
-        private void AdvanceBattleByInput(int inputEvents)
-        {
-            int threshold = Mathf.Max(1, _inputsPerBattleRoundRuntime);
-            _pendingBattleInputEvents += inputEvents;
-            int rounds = _pendingBattleInputEvents / threshold;
-            if (rounds <= 0)
-            {
-                _battleInfoLabel.Text = UiText.BattleInProgress(_battleMonsterName);
-                _battleInfoLabel.Visible = true;
-                _roundInfoLabel.Text = $"蓄力 {_pendingBattleInputEvents}/{threshold} | {UiText.BattleRound(_battleRoundCounter, _battleMonsterName, _enemyHp)}";
-                UpdateHpLabels();
-                RefreshActorSlots();
-                RefreshMoveDebugLabel();
-                RefreshDebugPanel();
-                return;
-            }
-
-            _pendingBattleInputEvents -= rounds * threshold;
-            for (int i = 0; i < rounds; i++)
-            {
-                _battleRoundCounter++;
-                _enemyHp -= _playerAttackPerRoundRuntime;
-                int damageToPlayer = Mathf.Max(_enemyMinDamageRuntime, _enemyAttackPower / Mathf.Max(1, _enemyDamageDividerRuntime));
-                _playerHp = Mathf.Max(0, _playerHp - damageToPlayer);
-
-                if (_playerHp <= 0)
-                {
-                    HandleBattleDefeat();
-                    return;
-                }
-
-                if (_enemyHp <= 0)
-                {
-                    CompleteBattle();
-                    return;
-                }
-            }
-
-            _battleInfoLabel.Text = UiText.BattleInProgress(_battleMonsterName);
-            _battleInfoLabel.Visible = true;
-            _roundInfoLabel.Text = $"{UiText.BattleRound(_battleRoundCounter, _battleMonsterName, _enemyHp)} | next {_pendingBattleInputEvents}/{threshold}";
-            UpdateHpLabels();
-            RefreshActorSlots();
-            RefreshMoveDebugLabel();
-            RefreshDebugPanel();
-        }
-
-        private void HandleBattleDefeat()
-        {
-            _inBattle = false;
-            _battleMonsterIndex = -1;
-            _battleMonsterId = "";
-            _battleRoundCounter = 0;
-            _pendingBattleInputEvents = 0;
-            _exploreProgress = 0.0f;
-            _progressBar.Value = 0.0f;
-
-            string levelId = _levelConfigLoader?.ActiveLevelId ?? "";
-            if (_levelConfigLoader != null && !string.IsNullOrEmpty(levelId))
-            {
-                _levelConfigLoader.TrySetActiveLevel(levelId);
-            }
-
-            ApplyLevelConfig();
-            _zoneLabel.Text = _currentZone;
-            ResetTrackVisual();
-            _battleInfoLabel.Text = "战败，当前副本已重置";
-            _battleInfoLabel.Visible = true;
-            _roundInfoLabel.Text = UiText.WaitingInput;
-            RefreshLevelOptionButton();
-            UpdateHpLabels();
-            RefreshActorSlots();
-            RefreshMoveDebugLabel();
-            RefreshDebugPanel();
-        }
-
-        private void CompleteBattle()
-        {
-            _inBattle = false;
-            _roundInfoLabel.Text = UiText.BattleRound(_battleRoundCounter, _battleMonsterName, 0);
-            _battleInfoLabel.Text = UiText.BattleVictory(_battleMonsterName);
-            _battleInfoLabel.Visible = true;
-
-            string activeLevelId = _levelConfigLoader?.ActiveLevelId ?? "";
-            if (_levelConfigLoader != null &&
-                _levelConfigLoader.TryMarkBossDefeatedAndUnlockNext(activeLevelId, _battleMonsterId, out string unlockedLevelId) &&
-                !string.IsNullOrEmpty(unlockedLevelId))
-            {
-                _battleInfoLabel.Text = $"{UiText.BattleVictory(_battleMonsterName)} | 已解锁 {unlockedLevelId}";
-            }
-
-            ApplyBattleRewards();
-
-            if (_battleMonsterIndex >= 0 && _battleMonsterIndex < _monsterMarkers.Count)
-            {
-                Label defeated = _monsterMarkers[_battleMonsterIndex];
-                defeated.Modulate = new Color(1, 1, 1, 0.45f);
-                defeated.Position = new Vector2(GetRightMostMonsterX() + MonsterRespawnSpacing, defeated.Position.Y);
-                defeated.Modulate = Colors.White;
-                AssignMonsterToMarker(_battleMonsterIndex);
-            }
-
-            _battleMonsterIndex = -1;
-            _battleMonsterId = "";
-            _pendingBattleInputEvents = 0;
-            _enemyHpLabel.Visible = false;
-            UpdateHpLabels();
-            RefreshActorSlots();
-            RefreshMoveDebugLabel();
-            RefreshDebugPanel();
         }
 
         private void ResetTrackVisual()
@@ -1221,79 +1116,6 @@ namespace Xiuxian.Scripts.Game
             _playerHp = Mathf.Clamp(_playerHp, 0, _playerMaxHp);
         }
 
-        private void ConfigureBattleMonster()
-        {
-            _battleMonsterName = UiText.DefaultMonsterName;
-            _enemyMaxHp = 24;
-            _enemyAttackPower = 4;
-            _inputsPerBattleRoundRuntime = InputsPerBattleRound;
-
-            if (_levelConfigLoader != null && !string.IsNullOrEmpty(_battleMonsterId))
-            {
-                if (_levelConfigLoader.TryGetMonsterCombatParams(
-                    _battleMonsterId,
-                    out string monsterName,
-                    out int hp,
-                    out int inputsPerRound,
-                    out int attack))
-                {
-                    _battleMonsterName = monsterName;
-                    _enemyMaxHp = hp;
-                    _inputsPerBattleRoundRuntime = inputsPerRound;
-                    _enemyAttackPower = attack;
-                }
-            }
-
-            _enemyHp = _enemyMaxHp;
-        }
-
-        private void ApplyBattleRewards()
-        {
-            bool appliedFromConfig = false;
-            double lingqi = 0.0;
-            double insight = 0.0;
-
-            if (_levelConfigLoader != null && !string.IsNullOrEmpty(_battleMonsterId))
-            {
-                var drops = _levelConfigLoader.RollMonsterDrops(_battleMonsterId);
-                ApplyResourceAndItemRewards(0.0, 0.0, drops, "battle_drop");
-
-                if (_levelConfigLoader.TryRollMonsterSettlementReward(_battleMonsterId, out lingqi, out insight))
-                {
-                    ApplyResourceAndItemRewards(lingqi, insight, new Dictionary<string, int>(), "battle_settle");
-                }
-
-                appliedFromConfig = drops.Count > 0 || lingqi > 0 || insight > 0;
-            }
-
-            if (!appliedFromConfig)
-            {
-                ApplyResourceAndItemRewards(0.0, 0.0, new Dictionary<string, int>
-                {
-                    ["spirit_herb"] = 1,
-                    ["lingqi_shard"] = 3
-                }, "battle_fallback");
-            }
-        }
-
-        private void ApplyLevelCompletionRewards()
-        {
-            if (_levelConfigLoader == null)
-            {
-                return;
-            }
-
-            if (_levelConfigLoader.TryBuildLevelCompletionReward(
-                out string levelId,
-                out bool firstClear,
-                out double lingqi,
-                out double insight,
-                out Dictionary<string, int> items))
-            {
-                ApplyResourceAndItemRewards(lingqi, insight, items, firstClear ? $"level_first_clear:{levelId}" : $"level_repeat_clear:{levelId}");
-            }
-        }
-
         public Godot.Collections.Dictionary<string, Variant> ToRuntimeDictionary()
         {
             string zoneId = _levelConfigLoader?.ActiveLevelId ?? "";
@@ -1335,7 +1157,8 @@ namespace Xiuxian.Scripts.Game
                 ["battle_monster_index"] = _battleMonsterIndex,
                 ["battle_monster_id"] = _battleMonsterId,
                 ["battle_monster_name"] = _battleMonsterName,
-                ["monster_marker_states"] = markerStates
+                ["monster_marker_states"] = markerStates,
+                ["recent_battle_logs"] = BuildRecentBattleLogsArray()
             };
         }
 
@@ -1367,6 +1190,44 @@ namespace Xiuxian.Scripts.Game
             _battleMonsterIndex = data.ContainsKey("battle_monster_index") ? data["battle_monster_index"].AsInt32() : _battleMonsterIndex;
             _battleMonsterId = data.ContainsKey("battle_monster_id") ? data["battle_monster_id"].AsString() : _battleMonsterId;
             _battleMonsterName = data.ContainsKey("battle_monster_name") ? data["battle_monster_name"].AsString() : _battleMonsterName;
+            _recentBattleLogs.Clear();
+            if (data.ContainsKey("recent_battle_logs") && data["recent_battle_logs"].VariantType == Variant.Type.Array)
+            {
+                var battleLogs = (Godot.Collections.Array<Variant>)data["recent_battle_logs"];
+                foreach (Variant itemVariant in battleLogs)
+                {
+                    if (itemVariant.VariantType != Variant.Type.Dictionary)
+                    {
+                        continue;
+                    }
+
+                    var item = (Godot.Collections.Dictionary<string, Variant>)itemVariant;
+                    var entry = new BattleLogEntry
+                    {
+                        TimestampUnix = item.ContainsKey("ts") ? item["ts"].AsInt64() : 0L,
+                        Result = item.ContainsKey("result") ? item["result"].AsString() : "victory",
+                        MonsterId = item.ContainsKey("monster_id") ? item["monster_id"].AsString() : "",
+                        MonsterName = item.ContainsKey("monster_name") ? item["monster_name"].AsString() : UiText.DefaultMonsterName,
+                        Lingqi = item.ContainsKey("lingqi") ? item["lingqi"].AsDouble() : 0.0,
+                        Insight = item.ContainsKey("insight") ? item["insight"].AsDouble() : 0.0
+                    };
+
+                    if (item.ContainsKey("items") && item["items"].VariantType == Variant.Type.Dictionary)
+                    {
+                        var itemDict = (Godot.Collections.Dictionary<string, Variant>)item["items"];
+                        foreach (string key in itemDict.Keys)
+                        {
+                            int qty = Math.Max(0, itemDict[key].AsInt32());
+                            if (qty > 0)
+                            {
+                                entry.Items[key] = qty;
+                            }
+                        }
+                    }
+
+                    _recentBattleLogs.Add(entry);
+                }
+            }
 
             if (data.ContainsKey("monster_marker_states") && data["monster_marker_states"].VariantType == Variant.Type.Array)
             {
@@ -1449,6 +1310,117 @@ namespace Xiuxian.Scripts.Game
             RefreshActorSlots();
             RefreshMoveDebugLabel();
             RefreshDebugPanel();
+            EmitSignal(SignalName.RecentBattleLogsChanged);
+        }
+
+        public string BuildRecentBattleLogsText(int maxEntries = 10)
+        {
+            if (_recentBattleLogs.Count == 0)
+            {
+                return "最近战斗\n- 暂无记录";
+            }
+
+            int limit = Math.Max(1, maxEntries);
+            var sb = new StringBuilder();
+            sb.Append("最近战斗");
+
+            int shown = 0;
+            for (int i = _recentBattleLogs.Count - 1; i >= 0 && shown < limit; i--)
+            {
+                BattleLogEntry entry = _recentBattleLogs[i];
+                string timeText = entry.TimestampUnix > 0
+                    ? DateTimeOffset.FromUnixTimeSeconds(entry.TimestampUnix).ToLocalTime().ToString("HH:mm:ss")
+                    : "--:--:--";
+                string resultText = entry.Result == "defeat" ? "战败" : "胜利";
+                string itemText = entry.Items.Count > 0 ? BuildDropSummary(entry.Items) : "none";
+                sb.Append($"\n- [{timeText}] {resultText} {entry.MonsterName} | lq={entry.Lingqi:0} in={entry.Insight:0} | items={itemText}");
+                shown++;
+            }
+
+            return sb.ToString();
+        }
+
+        public Godot.Collections.Array<Godot.Collections.Dictionary<string, Variant>> GetRecentBattleLogsSnapshot(int maxEntries = 10)
+        {
+            int limit = Math.Max(1, maxEntries);
+            var result = new Godot.Collections.Array<Godot.Collections.Dictionary<string, Variant>>();
+            for (int i = _recentBattleLogs.Count - 1; i >= 0 && result.Count < limit; i--)
+            {
+                BattleLogEntry entry = _recentBattleLogs[i];
+                var itemDict = new Godot.Collections.Dictionary<string, Variant>();
+                foreach (var kv in entry.Items)
+                {
+                    itemDict[kv.Key] = kv.Value;
+                }
+
+                result.Add(new Godot.Collections.Dictionary<string, Variant>
+                {
+                    ["ts"] = entry.TimestampUnix,
+                    ["result"] = entry.Result,
+                    ["monster_id"] = entry.MonsterId,
+                    ["monster_name"] = entry.MonsterName,
+                    ["lingqi"] = entry.Lingqi,
+                    ["insight"] = entry.Insight,
+                    ["items"] = itemDict
+                });
+            }
+
+            return result;
+        }
+
+        private Godot.Collections.Array<Variant> BuildRecentBattleLogsArray()
+        {
+            var result = new Godot.Collections.Array<Variant>();
+            foreach (BattleLogEntry entry in _recentBattleLogs)
+            {
+                var itemDict = new Godot.Collections.Dictionary<string, Variant>();
+                foreach (var kv in entry.Items)
+                {
+                    itemDict[kv.Key] = kv.Value;
+                }
+
+                result.Add(new Godot.Collections.Dictionary<string, Variant>
+                {
+                    ["ts"] = entry.TimestampUnix,
+                    ["result"] = entry.Result,
+                    ["monster_id"] = entry.MonsterId,
+                    ["monster_name"] = entry.MonsterName,
+                    ["lingqi"] = entry.Lingqi,
+                    ["insight"] = entry.Insight,
+                    ["items"] = itemDict
+                });
+            }
+            return result;
+        }
+
+        private void AddRecentBattleLog(string result, string monsterId, string monsterName, double lingqi, double insight, Dictionary<string, int> items)
+        {
+            var copiedItems = new Dictionary<string, int>();
+            foreach (var kv in items)
+            {
+                if (kv.Value > 0)
+                {
+                    copiedItems[kv.Key] = kv.Value;
+                }
+            }
+
+            _recentBattleLogs.Add(new BattleLogEntry
+            {
+                TimestampUnix = (long)Time.GetUnixTimeFromSystem(),
+                Result = result,
+                MonsterId = monsterId,
+                MonsterName = string.IsNullOrEmpty(monsterName) ? UiText.DefaultMonsterName : monsterName,
+                Lingqi = Math.Max(0.0, lingqi),
+                Insight = Math.Max(0.0, insight),
+                Items = copiedItems
+            });
+
+            if (_recentBattleLogs.Count > MaxRecentBattleLogs)
+            {
+                _recentBattleLogs.RemoveAt(0);
+            }
+
+            EmitSignal(SignalName.RecentBattleLogsChanged);
         }
 
         private void AssignMonsterToMarker(int markerIndex)
@@ -1546,251 +1518,5 @@ namespace Xiuxian.Scripts.Game
             _playerProgressState.TryBreakthrough();
             RefreshCultivationPanel();
         }
-
-        private void EnsureDebugPanel()
-        {
-            _debugPanelLabel = new Label();
-            _debugPanelLabel.Name = "DebugPanelLabel";
-            _debugPanelLabel.Position = new Vector2(360.0f, 4.0f);
-            _debugPanelLabel.Size = new Vector2(620.0f, 130.0f);
-            _debugPanelLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-            _debugPanelLabel.Modulate = new Color(0.95f, 0.95f, 0.75f, 0.95f);
-            _debugPanelLabel.Visible = false;
-            _debugPanelLabel.MouseFilter = Control.MouseFilterEnum.Ignore;
-            _battleInfoLabel.GetParent().AddChild(_debugPanelLabel);
-        }
-
-        private void RefreshDebugPanel()
-        {
-            if (_debugPanelLabel == null || !_debugPanelVisible)
-            {
-                return;
-            }
-
-            var sb = new StringBuilder();
-            string actionMode = IsDungeonMode() ? "dungeon" : "cultivation";
-            sb.Append($"[F8] debug | zone={_currentZone}");
-            sb.Append($" | mode={actionMode}");
-            sb.Append($" | progress={_exploreProgress:0.0}%");
-            sb.Append($" | monster={_battleMonsterName}({_battleMonsterId})");
-            sb.Append($" | drop={_lastDropSummary}");
-            sb.Append($"\nSimFilter level={(string.IsNullOrEmpty(_simulationLevelFilterId) ? "active" : _simulationLevelFilterId)}");
-            sb.Append($" | monster={(string.IsNullOrEmpty(_simulationMonsterFilterId) ? "auto" : _simulationMonsterFilterId)}");
-
-            if (_levelConfigLoader != null)
-            {
-                sb.Append('\n');
-                sb.Append(_levelConfigLoader.BuildDebugSummary());
-                sb.Append('\n');
-                sb.Append(_levelConfigLoader.BuildValidationSummary(6));
-                sb.Append('\n');
-                sb.Append(_levelConfigLoader.BuildLevelPreviewSummary(8));
-            }
-
-            sb.Append("\n[F4] toggle main action  [F5] switch unlocked level  [F6] sim-level  [F7] sim-monster  [F9] sim200  [F10] sim1000  [F11] scope  [F12] active-level");
-            sb.Append($"\nSim: {_lastSimulationSummary}");
-
-            _debugPanelLabel.Text = sb.ToString();
-        }
-
-        private bool IsDungeonMode()
-        {
-            return _actionState == null || _actionState.IsDungeonMode;
-        }
-
-        private void RefreshValidationPanel()
-        {
-            if (_validationPanel == null || _validationTitleLabel == null || _validationBodyLabel == null)
-            {
-                return;
-            }
-
-            _validationPanel.Visible = _validationPanelEnabled;
-            if (!_validationPanelEnabled)
-            {
-                return;
-            }
-
-            if (_levelConfigLoader == null)
-            {
-                _validationPanel.SelfModulate = new Color(0.82f, 0.82f, 0.82f, 0.95f);
-                _validationTitleLabel.Text = "配置校验：不可用";
-                _validationBodyLabel.Text = "LevelConfigLoader 未加载。\n[F11] scope  [F12] 当前关卡";
-                return;
-            }
-
-            var entries = _levelConfigLoader.GetValidationEntries();
-            var filtered = FilterValidationEntries(entries);
-            int issueCount = filtered.Count;
-            int totalCount = entries.Count;
-            if (issueCount <= 0)
-            {
-                _validationPanel.SelfModulate = new Color(0.70f, 0.90f, 0.74f, 0.95f);
-                _validationTitleLabel.Text = $"配置校验：通过 ({BuildValidationFilterSummary()})";
-                _validationBodyLabel.Text = "当前过滤条件下未发现配置错误。\n[F11] scope  [F12] 当前关卡";
-                return;
-            }
-
-            _validationPanel.SelfModulate = new Color(0.98f, 0.72f, 0.72f, 0.96f);
-            _validationTitleLabel.Text = $"配置校验：{issueCount}/{totalCount} 项 ({BuildValidationFilterSummary()})";
-
-            int maxLines = 2;
-            var sb = new StringBuilder();
-            int shown = Mathf.Min(maxLines, issueCount);
-            for (int i = 0; i < shown; i++)
-            {
-                var entry = filtered[i];
-                string scope = entry.ContainsKey("scope") ? entry["scope"].AsString() : "config";
-                string id = entry.ContainsKey("id") ? entry["id"].AsString() : "(unknown)";
-                string field = entry.ContainsKey("field") ? entry["field"].AsString() : "(unknown)";
-                string message = entry.ContainsKey("message") ? entry["message"].AsString() : "validation failed";
-                string levelId = entry.ContainsKey("level_id") ? entry["level_id"].AsString() : "";
-                string monsterId = entry.ContainsKey("monster_id") ? entry["monster_id"].AsString() : "";
-                string dropTableId = entry.ContainsKey("drop_table_id") ? entry["drop_table_id"].AsString() : "";
-
-                if (i > 0)
-                {
-                    sb.Append('\n');
-                }
-
-                sb.Append($"• {scope}/{id} {field} {message}");
-
-                if (!string.IsNullOrEmpty(levelId) || !string.IsNullOrEmpty(monsterId) || !string.IsNullOrEmpty(dropTableId))
-                {
-                    sb.Append(" (");
-                    bool first = true;
-                    if (!string.IsNullOrEmpty(levelId))
-                    {
-                        sb.Append($"level_id={levelId}");
-                        first = false;
-                    }
-                    if (!string.IsNullOrEmpty(monsterId))
-                    {
-                        if (!first)
-                        {
-                            sb.Append(", ");
-                        }
-                        sb.Append($"monster_id={monsterId}");
-                        first = false;
-                    }
-                    if (!string.IsNullOrEmpty(dropTableId))
-                    {
-                        if (!first)
-                        {
-                            sb.Append(", ");
-                        }
-                        sb.Append($"drop_table_id={dropTableId}");
-                    }
-                    sb.Append(')');
-                }
-            }
-
-            if (issueCount > shown)
-            {
-                sb.Append($"\n… 还有 {issueCount - shown} 项");
-            }
-
-            sb.Append("\n[F11] scope  [F12] 当前关卡");
-            _validationBodyLabel.Text = sb.ToString();
-        }
-
-        public void SetValidationPanelEnabled(bool enabled)
-        {
-            _validationPanelEnabled = enabled;
-            RefreshValidationPanel();
-        }
-
-        public void SetGlobalDebugOverlayEnabled(bool enabled)
-        {
-            _globalDebugOverlayEnabled = enabled;
-            ApplyGlobalDebugOverlayVisibility();
-            RefreshMoveDebugLabel();
-        }
-
-        private void CycleValidationScopeFilter()
-        {
-            _validationScopeFilterIndex = (_validationScopeFilterIndex + 1) % ValidationScopeFilters.Length;
-        }
-
-        private string BuildValidationFilterSummary()
-        {
-            string scope = ValidationScopeFilters[Mathf.Clamp(_validationScopeFilterIndex, 0, ValidationScopeFilters.Length - 1)];
-            string levelScope = _validationOnlyActiveLevel ? "active-level" : "all-levels";
-            return $"{scope}, {levelScope}";
-        }
-
-        private Godot.Collections.Array<Godot.Collections.Dictionary<string, Variant>> FilterValidationEntries(
-            Godot.Collections.Array<Godot.Collections.Dictionary<string, Variant>> entries)
-        {
-            var result = new Godot.Collections.Array<Godot.Collections.Dictionary<string, Variant>>();
-            string scopeFilter = ValidationScopeFilters[Mathf.Clamp(_validationScopeFilterIndex, 0, ValidationScopeFilters.Length - 1)];
-            string activeLevelId = _levelConfigLoader?.ActiveLevelId ?? "";
-
-            foreach (var entry in entries)
-            {
-                string scope = entry.ContainsKey("scope") ? entry["scope"].AsString() : "config";
-                string levelId = entry.ContainsKey("level_id") ? entry["level_id"].AsString() : "";
-
-                if (scopeFilter != "all" && scope != scopeFilter)
-                {
-                    continue;
-                }
-
-                if (_validationOnlyActiveLevel && !string.IsNullOrEmpty(activeLevelId))
-                {
-                    if (string.IsNullOrEmpty(levelId) || levelId != activeLevelId)
-                    {
-                        continue;
-                    }
-                }
-
-                result.Add(entry);
-            }
-
-            return result;
-        }
-
-        private static string BuildDropSummary(Dictionary<string, int> drops)
-        {
-            if (drops.Count == 0)
-            {
-                return "none";
-            }
-
-            var sb = new StringBuilder();
-            bool first = true;
-            foreach (var kv in drops)
-            {
-                if (!first)
-                {
-                    sb.Append(", ");
-                }
-                first = false;
-                sb.Append($"{kv.Key} x{kv.Value}");
-            }
-            return sb.ToString();
-        }
-
-        private void ApplyResourceAndItemRewards(double lingqi, double insight, Dictionary<string, int> items, string source)
-        {
-            if (lingqi > 0.0)
-            {
-                _resourceWalletState?.AddLingqi(lingqi);
-            }
-            if (insight > 0.0)
-            {
-                _resourceWalletState?.AddInsight(insight);
-            }
-
-            foreach (var kv in items)
-            {
-                _backpackState?.AddItem(kv.Key, kv.Value);
-            }
-
-            string itemPart = items.Count > 0 ? BuildDropSummary(items) : "none";
-            _lastDropSummary = $"{source} | lq={lingqi:0} in={insight:0} | items={itemPart}";
-            RefreshDebugPanel();
-        }
     }
 }
-

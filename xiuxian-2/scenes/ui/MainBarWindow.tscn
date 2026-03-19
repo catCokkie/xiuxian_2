@@ -1,7 +1,16 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/MainBarLayoutController.cs" id="1"]
 [ext_resource type="Texture2D" path="res://assets/ui/actor_placeholder.svg" id="2"]
+[ext_resource type="Texture2D" path="res://assets/origin/ui/main_bar_bg.png" id="3"]
+[ext_resource type="Texture2D" path="res://assets/origin/ui/icon_drag_handle.png" id="4"]
+[ext_resource type="Texture2D" path="res://assets/origin/ui/icon_resize_handle.png" id="5"]
+[ext_resource type="Texture2D" path="res://assets/origin/ui/icon_book_button.png" id="6"]
+[ext_resource type="Texture2D" path="res://assets/origin/scene_bg/player_cultivator.png" id="7"]
+[ext_resource type="Texture2D" path="res://assets/origin/monsters/mob_001_cave_insect_idle.png" id="8"]
+[ext_resource type="Texture2D" path="res://assets/origin/scene_bg/zone_001_cave_bg.png" id="9"]
+[ext_resource type="Texture2D" path="res://assets/origin/scene_bg/zone_001_cave_midground.png" id="10"]
+[ext_resource type="Texture2D" path="res://assets/origin/items/icon_breakthrough_pill.png" id="11"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1"]
 bg_color = Color(0.141176, 0.129412, 0.172549, 0.901961)
@@ -43,13 +52,30 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_1")
 
+[node name="MainBarBgTexture" type="TextureRect" parent="Chrome"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 2.0
+offset_top = 2.0
+offset_right = -2.0
+offset_bottom = -2.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("3")
+expand_mode = 1
+stretch_mode = 6
+modulate = Color(1, 1, 1, 0.85)
+
 [node name="DragHandleButton" type="Button" parent="Chrome"]
 layout_mode = 0
 offset_left = 10.0
 offset_top = 10.0
 offset_right = 60.0
 offset_bottom = 38.0
-text = "閳?"
+text = "↕"
 
 [node name="ResizeHandleButton" type="Button" parent="Chrome"]
 layout_mode = 0
@@ -57,7 +83,7 @@ offset_left = 1040.0
 offset_top = 10.0
 offset_right = 1090.0
 offset_bottom = 38.0
-text = "閳?"
+text = "↔"
 
 [node name="BookButton" type="Button" parent="Chrome"]
 layout_mode = 0
@@ -65,7 +91,7 @@ offset_left = 10.0
 offset_top = 72.0
 offset_right = 64.0
 offset_bottom = 126.0
-text = "娑?"
+text = "书"
 
 [node name="RealmStageLabel" type="Label" parent="Chrome"]
 layout_mode = 0
@@ -73,7 +99,7 @@ offset_left = 12.0
 offset_top = 154.0
 offset_right = 190.0
 offset_bottom = 170.0
-text = "閻愬吋鐨垫稉鈧仦?"
+text = "炼气一层"
 
 [node name="ConfigValidationPanel" type="Panel" parent="Chrome"]
 layout_mode = 0
@@ -103,17 +129,19 @@ offset_left = 8.0
 offset_top = 2.0
 offset_right = 312.0
 offset_bottom = 18.0
-text = "闁板秶鐤嗛弽锟犵崣閿涙岸鈧俺绻?"
+text = "配置校验"
 
-[node name="BodyLabel" type="Label" parent="Chrome/ConfigValidationPanel"]
+[node name="BodyLabel" type="RichTextLabel" parent="Chrome/ConfigValidationPanel"]
 layout_mode = 0
 offset_left = 8.0
 offset_top = 16.0
 offset_right = 312.0
 offset_bottom = 28.0
 autowrap_mode = 3
-clip_text = true
-text = "瑜版挸澧犳潻鍥ㄦ姢閺夆€叉娑撳婀崣鎴犲箛闁挎瑨顕ら妴?"
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+text = "当前未发现配置问题"
 
 [node name="BattleTrack" type="Panel" parent="Chrome"]
 layout_mode = 0
@@ -123,6 +151,30 @@ offset_right = 860.0
 offset_bottom = 86.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_2")
 
+[node name="TrackBg" type="TextureRect" parent="Chrome/BattleTrack"]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 20.0
+offset_right = 768.0
+offset_bottom = 74.0
+mouse_filter = 2
+texture = ExtResource("9")
+expand_mode = 1
+stretch_mode = 6
+modulate = Color(1, 1, 1, 0.45)
+
+[node name="TrackMid" type="TextureRect" parent="Chrome/BattleTrack"]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 22.0
+offset_right = 768.0
+offset_bottom = 74.0
+mouse_filter = 2
+texture = ExtResource("10")
+expand_mode = 1
+stretch_mode = 6
+modulate = Color(1, 1, 1, 0.5)
+
 [node name="TrackLabel" type="Label" parent="Chrome/BattleTrack"]
 visible = false
 layout_mode = 0
@@ -130,7 +182,7 @@ offset_left = 16.0
 offset_top = 8.0
 offset_right = 300.0
 offset_bottom = 30.0
-text = "閹恒垻鍌ㄩ幋妯绘灍濠曟柨鍤敮?"
+text = "探索战斗演出"
 
 [node name="BattleInfoLabel" type="Label" parent="Chrome/BattleTrack"]
 visible = false
@@ -147,7 +199,7 @@ offset_left = 140.0
 offset_top = 6.0
 offset_right = 520.0
 offset_bottom = 24.0
-text = "缁涘绶熸潏鎾冲弳..."
+text = "等待输入..."
 
 [node name="PlayerSlotTexture" type="TextureRect" parent="Chrome/BattleTrack"]
 layout_mode = 0
@@ -165,7 +217,7 @@ offset_top = 20.0
 offset_right = 86.0
 offset_bottom = 36.0
 horizontal_alignment = 1
-text = "娑撴槒顫?"
+text = "主角"
 
 [node name="EnemySlotTexture" type="TextureRect" parent="Chrome/BattleTrack"]
 visible = false
@@ -185,7 +237,7 @@ offset_top = 20.0
 offset_right = 576.0
 offset_bottom = 36.0
 horizontal_alignment = 1
-text = "閺佸奔姹?"
+text = "敌人"
 
 [node name="PlayerMarker" type="Label" parent="Chrome/BattleTrack"]
 layout_mode = 0
@@ -193,7 +245,7 @@ offset_left = 48.0
 offset_top = 44.0
 offset_right = 80.0
 offset_bottom = 72.0
-text = "娣?"
+text = "主"
 
 [node name="PlayerHpLabel" type="Label" parent="Chrome/BattleTrack"]
 layout_mode = 0
@@ -245,7 +297,7 @@ offset_left = 540.0
 offset_top = 44.0
 offset_right = 580.0
 offset_bottom = 72.0
-text = "婵?"
+text = "怪"
 
 [node name="MonsterMarker02" type="Label" parent="Chrome/BattleTrack"]
 layout_mode = 0
@@ -253,7 +305,7 @@ offset_left = 650.0
 offset_top = 44.0
 offset_right = 690.0
 offset_bottom = 72.0
-text = "婵?"
+text = "怪"
 
 [node name="MonsterMarker03" type="Label" parent="Chrome/BattleTrack"]
 layout_mode = 0
@@ -261,7 +313,7 @@ offset_left = 760.0
 offset_top = 44.0
 offset_right = 800.0
 offset_bottom = 72.0
-text = "婵?"
+text = "怪"
 
 [node name="MonsterMarker04" type="Label" parent="Chrome/BattleTrack"]
 layout_mode = 0
@@ -269,7 +321,7 @@ offset_left = 870.0
 offset_top = 44.0
 offset_right = 910.0
 offset_bottom = 72.0
-text = "婵?"
+text = "怪"
 
 [node name="EnemyHpLabel" type="Label" parent="Chrome/BattleTrack"]
 layout_mode = 0
@@ -285,7 +337,7 @@ offset_left = 98.0
 offset_top = 128.0
 offset_right = 460.0
 offset_bottom = 152.0
-text = "閺堫剚澹掓潏鎾冲弳 0 | 閺堫剚澹扐P(鐠у嫭绨? 0.0"
+text = "本批输入 0 | 本批AP(资源) 0.0"
 
 [node name="MoveDebugLabel" type="Label" parent="Chrome"]
 visible = false
@@ -304,7 +356,7 @@ offset_left = 520.0
 offset_top = 102.0
 offset_right = 700.0
 offset_bottom = 122.0
-text = "娣囶喚鍋?0/0"
+text = "修炼 0/0"
 
 [node name="CultivationProgressBar" type="ProgressBar" parent="Chrome"]
 layout_mode = 0
@@ -321,7 +373,7 @@ offset_left = 770.0
 offset_top = 124.0
 offset_right = 846.0
 offset_bottom = 152.0
-text = "缁愪胶鐗?"
+text = "突破"
 
 [node name="ZoneLabel" type="Label" parent="Chrome"]
 layout_mode = 0
@@ -330,7 +382,7 @@ offset_top = 102.0
 offset_right = 1088.0
 offset_bottom = 122.0
 horizontal_alignment = 2
-text = "楠炶姤纭ュú鐐电嵃"
+text = "幽泉洞窟"
 
 [node name="ExploreProgressBar" type="ProgressBar" parent="Chrome"]
 layout_mode = 0
@@ -340,4 +392,3 @@ offset_right = 1088.0
 offset_bottom = 150.0
 max_value = 100.0
 value = 4.0
-
