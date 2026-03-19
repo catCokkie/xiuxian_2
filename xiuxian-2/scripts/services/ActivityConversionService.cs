@@ -1,4 +1,5 @@
 using Godot;
+using Xiuxian.Scripts.Core;
 
 namespace Xiuxian.Scripts.Services
 {
@@ -91,17 +92,13 @@ namespace Xiuxian.Scripts.Services
 
         private void OnInputBatchTick(int inputEvents, double apFinal)
         {
-            if (!CultivationInputExpEnabled || inputEvents <= 0 || _progressState == null)
+            if (_progressState == null)
             {
                 return;
             }
 
-            if (_actionState != null && !_actionState.IsCultivationMode)
-            {
-                return;
-            }
-
-            double gain = inputEvents * CultivationExpPerInput;
+            bool isCultivationMode = _actionState == null || _actionState.IsCultivationMode;
+            double gain = ActivitySettlementRule.CalculateInputRealmExpGain(CultivationInputExpEnabled, isCultivationMode, inputEvents, CultivationExpPerInput);
             if (gain > 0.0)
             {
                 _progressState.AddRealmExp(gain);
@@ -121,18 +118,24 @@ namespace Xiuxian.Scripts.Services
             double moodMul = _progressState.GetMoodMultiplier();
             double realmMul = _progressState.GetRealmMultiplier();
 
-            double lingqiGain = apFinal10s * LingqiFactor * moodMul * realmMul;
-            double insightGain = apFinal10s * InsightFactor;
-            double petAffinityGain = apFinal10s * PetAffinityFactor;
-            bool inputExpActive = CultivationInputExpEnabled && (_actionState == null || _actionState.IsCultivationMode);
-            double realmExpGain = inputExpActive ? 0.0 : lingqiGain * RealmExpFromLingqiRate;
+            bool isCultivationMode = _actionState == null || _actionState.IsCultivationMode;
+            ActivitySettlementResult settlement = ActivitySettlementRule.CalculateSettlement(
+                apFinal10s,
+                LingqiFactor,
+                InsightFactor,
+                PetAffinityFactor,
+                RealmExpFromLingqiRate,
+                moodMul,
+                realmMul,
+                CultivationInputExpEnabled,
+                isCultivationMode);
 
-            _walletState.AddLingqi(lingqiGain);
-            _walletState.AddInsight(insightGain);
-            _walletState.AddPetAffinity(petAffinityGain);
-            _progressState.AddRealmExp(realmExpGain);
+            _walletState.AddLingqi(settlement.LingqiGain);
+            _walletState.AddInsight(settlement.InsightGain);
+            _walletState.AddPetAffinity(settlement.PetAffinityGain);
+            _progressState.AddRealmExp(settlement.RealmExpGain);
 
-            EmitSignal(SignalName.SettlementApplied, apFinal10s, lingqiGain, insightGain, petAffinityGain, realmExpGain);
+            EmitSignal(SignalName.SettlementApplied, apFinal10s, settlement.LingqiGain, settlement.InsightGain, settlement.PetAffinityGain, settlement.RealmExpGain);
         }
     }
 }

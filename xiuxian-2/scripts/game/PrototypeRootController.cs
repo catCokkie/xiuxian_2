@@ -15,6 +15,7 @@ namespace Xiuxian.Scripts.Game
         private const int SaveSchemaVersion = 5;
         private const double SaveIntervalSeconds = 0.5;
         private const double DefaultActivitySaveMarkIntervalSeconds = 10.0;
+        private const double CloudUploadMinIntervalSeconds = 20.0;
 
         private MainBarLayoutController _mainBar = null!;
         private SubmenuWindowController _submenu = null!;
@@ -32,6 +33,8 @@ namespace Xiuxian.Scripts.Game
 
         private bool _saveDirty;
         private double _saveCooldown;
+        private bool _cloudUploadPending;
+        private double _cloudUploadCooldown;
         private double _activitySaveMarkTimer;
         private double _activitySaveMarkIntervalSeconds = DefaultActivitySaveMarkIntervalSeconds;
 
@@ -125,19 +128,17 @@ namespace Xiuxian.Scripts.Game
 
         public override void _Process(double delta)
         {
-            if (!_saveDirty)
+            if (_saveDirty)
             {
-                return;
+                _saveCooldown -= delta;
+                if (_saveCooldown <= 0.0)
+                {
+                    SaveAllState();
+                    _saveDirty = false;
+                }
             }
 
-            _saveCooldown -= delta;
-            if (_saveCooldown > 0.0)
-            {
-                return;
-            }
-
-            SaveAllState();
-            _saveDirty = false;
+            ProcessCloudUpload(delta);
         }
 
         public override void _Notification(int what)
@@ -145,6 +146,7 @@ namespace Xiuxian.Scripts.Game
             if (what == NotificationWMCloseRequest)
             {
                 SaveAllState();
+                TryUploadCloudNow();
             }
         }
 
@@ -187,6 +189,8 @@ namespace Xiuxian.Scripts.Game
 
             _saveDirty = false;
             _saveCooldown = SaveIntervalSeconds;
+            _cloudUploadPending = false;
+            _cloudUploadCooldown = 0.0;
             _activitySaveMarkTimer = 0.0;
             RefreshRuntimeSettingsFromBookTabs();
         }
@@ -215,7 +219,48 @@ namespace Xiuxian.Scripts.Game
                 return;
             }
 
-            _cloudSaveSyncService?.TryUploadLocal(_cloudSyncEnabled);
+            if (_cloudSyncEnabled)
+            {
+                _cloudUploadPending = true;
+            }
+        }
+
+        private void ProcessCloudUpload(double delta)
+        {
+            if (!_cloudUploadPending || !_cloudSyncEnabled || _cloudSaveSyncService == null)
+            {
+                return;
+            }
+
+            _cloudUploadCooldown -= delta;
+            if (_cloudUploadCooldown > 0.0)
+            {
+                return;
+            }
+
+            if (_cloudSaveSyncService.TryUploadLocal(true))
+            {
+                _cloudUploadPending = false;
+                _cloudUploadCooldown = CloudUploadMinIntervalSeconds;
+            }
+            else
+            {
+                _cloudUploadCooldown = Math.Max(1.0, CloudUploadMinIntervalSeconds * 0.5);
+            }
+        }
+
+        private void TryUploadCloudNow()
+        {
+            if (!_cloudSyncEnabled || _cloudSaveSyncService == null)
+            {
+                return;
+            }
+
+            if (_cloudSaveSyncService.TryUploadLocal(true))
+            {
+                _cloudUploadPending = false;
+                _cloudUploadCooldown = CloudUploadMinIntervalSeconds;
+            }
         }
 
         private bool LoadUnifiedState()
@@ -494,19 +539,38 @@ namespace Xiuxian.Scripts.Game
         {
             var dict = _bookTabs.ToSystemSettingsDictionary();
             config.SetValue("settings", "system", dict);
-            _cloudSyncEnabled = dict.ContainsKey("cloud_sync") && dict["cloud_sync"].AsBool();
+            bool cloudSyncEnabled = dict.ContainsKey("cloud_sync") && dict["cloud_sync"].AsBool();
+            UpdateCloudSyncRuntime(cloudSyncEnabled);
             _activitySaveMarkIntervalSeconds = ReadActivitySaveInterval(dict);
         }
 
         private void RefreshRuntimeSettingsFromBookTabs()
         {
             var dict = _bookTabs.ToSystemSettingsDictionary();
-            _cloudSyncEnabled = dict.ContainsKey("cloud_sync") && dict["cloud_sync"].AsBool();
+            bool cloudSyncEnabled = dict.ContainsKey("cloud_sync") && dict["cloud_sync"].AsBool();
+            UpdateCloudSyncRuntime(cloudSyncEnabled);
             _activitySaveMarkIntervalSeconds = ReadActivitySaveInterval(dict);
             bool showValidationPanel = !dict.ContainsKey("show_validation_panel") || dict["show_validation_panel"].AsBool();
             _exploreProgressController?.SetValidationPanelEnabled(showValidationPanel);
             bool globalDebugOverlay = dict.ContainsKey("global_debug_overlay") && dict["global_debug_overlay"].AsBool();
             _exploreProgressController?.SetGlobalDebugOverlayEnabled(globalDebugOverlay);
+        }
+
+        private void UpdateCloudSyncRuntime(bool enabled)
+        {
+            bool changed = _cloudSyncEnabled != enabled;
+            _cloudSyncEnabled = enabled;
+            if (!_cloudSyncEnabled)
+            {
+                _cloudUploadPending = false;
+                return;
+            }
+
+            if (changed)
+            {
+                _cloudUploadPending = true;
+                _cloudUploadCooldown = 0.0;
+            }
         }
 
         private static double ReadActivitySaveInterval(Godot.Collections.Dictionary<string, Variant> dict)
@@ -527,4 +591,3 @@ namespace Xiuxian.Scripts.Game
         }
     }
 }
-

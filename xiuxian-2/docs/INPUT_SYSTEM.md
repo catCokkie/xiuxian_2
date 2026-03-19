@@ -115,7 +115,7 @@ AP_final = AP_raw * decay
 
 ### 用户控制
 
-- 全局快捷键 `Ctrl + Shift + X`：暂停/恢复采集（待实现）
+- 全局快捷键 `Ctrl + Shift + X`：暂停/恢复采集（已实现，见 `InputPauseShortcut`）
 - 底栏状态指示器：显示当前采集状态
 - 设置面板：可完全禁用全局钩子
 

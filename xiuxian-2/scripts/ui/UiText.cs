@@ -21,6 +21,7 @@ public static class UiText
     public const string SystemSection = "系统";
     public const string DisplaySection = "画面";
     public const string ProgressSection = "进度";
+    public const string RuntimeActionsTitle = "运行时快捷操作";
     public const string ResetAndApply = "重置并应用";
     public const string Quit = "退出";
     public const string Open = "打开";
@@ -48,6 +49,11 @@ public static class UiText
     public const string LevelSelectPrefix = "副本:";
     public const string ActionModeQuickToggle = "切主行为";
     public const string NextLevelQuickButton = "下一副本";
+    public const string RecentBattleLogsTitle = "最近战斗日志";
+    public const string RecentBattleLogsEmpty = "暂无记录";
+    public const string BattleResultVictory = "胜利";
+    public const string BattleResultDefeat = "战败";
+    public const string BattleLogNoItems = "无掉落";
 
     public static string SpiritStone(int amount) => $"{SpiritStoneLabelPrefix} {amount}";
     public static string RealmStage(int realmLevel, double percent) => $"炼气{realmLevel}层 {percent:0}%";
@@ -58,6 +64,8 @@ public static class UiText
     public static string BattleRound(int round, string monsterName, int hp) => $"Round {round} | {monsterName} HP {hp}";
     public static string BattleInProgress(string monsterName) => $"战斗中.. {monsterName}";
     public static string BattleVictory(string monsterName) => $"战斗胜利，结算{monsterName}战利品";
+    public static string BattleLogSummary(string timeText, string resultText, string monsterName) => $"[{timeText}] {resultText} {monsterName}";
+    public static string BattleLogRewards(double lingqi, double insight, string itemText) => $"  lq={lingqi:0} in={insight:0} | {itemText}";
 
     public const string ExploreIdle = "探索待命";
     public const string WaitingInput = "等待输入...";
