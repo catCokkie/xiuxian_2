@@ -15,3 +15,6 @@ verify: build check-bom
     @echo 3) After reload, explore runtime and recent battle log are restored.
 
 verify-save: verify
+
+verify-runtime: build check-bom
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tools/verify-runtime.ps1
