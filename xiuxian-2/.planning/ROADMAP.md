@@ -11,6 +11,7 @@
 - Unmapped requirements: 0
 - Planning mode: `yolo`
 - Granularity: `standard`
+- Phase 1 status: complete
 
 ## Phases
 
@@ -27,13 +28,15 @@
 
 **Goal:** Fix the main UI behavior users feel immediately: overlapping controls and ineffective dragging for the main bar and submenu.
 
+**Status:** Complete
+
 **Requirements:** UI-01, UI-02, UI-03, UI-04
 
 **Success criteria:**
-1. Main bar controls no longer overlap in a way that blocks normal use.
-2. Main bar can be dragged to a target position during use.
-3. Submenu/book window can be dragged to a target position during use.
-4. Existing UI shell remains recognizable and is not replaced by a redesign.
+1. Main bar controls no longer overlap in a way that blocks normal use. ✓
+2. Main bar can be dragged to a target position during use. ✓
+3. Submenu/book window can be dragged to a target position during use. ✓
+4. Existing UI shell remains recognizable and is not replaced by a redesign. ✓
 
 ### Phase 2: Regression Expansion
 

@@ -9,7 +9,7 @@ public partial class MainBarLayoutController : Control
 
     [Export] public float MinWidth = 720.0f;
     [Export] public float MaxWidth = 1500.0f;
-    [Export] public bool LockToBottom = true;
+    [Export] public bool LockToBottom = false;
     [Export] public float MinBottomMargin = 8.0f;
 
     private Button _dragHandle = null!;
@@ -91,11 +91,14 @@ public partial class MainBarLayoutController : Control
         float maxX = Mathf.Max(0.0f, GetViewportRect().Size.X - Size.X);
         float clampedX = Mathf.Clamp(Position.X, 0.0f, maxX);
 
+        float maxY = Mathf.Max(0.0f, GetViewportRect().Size.Y - Size.Y);
+        float clampedY = Mathf.Clamp(Position.Y, 0.0f, maxY);
+
         if (!LockToBottom)
         {
-            if (!Mathf.IsEqualApprox(Position.X, clampedX))
+            if (!Mathf.IsEqualApprox(Position.X, clampedX) || !Mathf.IsEqualApprox(Position.Y, clampedY))
             {
-                Position = new Vector2(clampedX, Position.Y);
+                Position = new Vector2(clampedX, clampedY);
             }
             return;
         }
@@ -140,7 +143,12 @@ public partial class MainBarLayoutController : Control
             Vector2 delta = mouseMotion.GlobalPosition - _lastMousePos;
             float targetX = Position.X + delta.X;
             float maxX = GetViewportRect().Size.X - Size.X;
-            Position = new Vector2(Mathf.Clamp(targetX, 0.0f, Mathf.Max(maxX, 0.0f)), LockToBottom ? _fixedBottomY : Position.Y + delta.Y);
+            float targetY = Position.Y + delta.Y;
+            float maxY = GetViewportRect().Size.Y - Size.Y;
+            Position = new Vector2(
+                Mathf.Clamp(targetX, 0.0f, Mathf.Max(maxX, 0.0f)),
+                LockToBottom ? _fixedBottomY : Mathf.Clamp(targetY, 0.0f, Mathf.Max(maxY, 0.0f))
+            );
             _lastMousePos = mouseMotion.GlobalPosition;
             EmitSignal(SignalName.LayoutChanged, Position.X, Size.X);
         }
@@ -173,13 +181,17 @@ public partial class MainBarLayoutController : Control
         }
     }
 
-    public void ApplyLayout(float x, float width)
+    public void ApplyLayout(float x, float y, float width)
     {
         float clampedWidth = Mathf.Clamp(width, MinWidth, MaxWidth);
         Size = new Vector2(clampedWidth, Size.Y);
 
         float maxX = GetViewportRect().Size.X - Size.X;
-        Position = new Vector2(Mathf.Clamp(x, 0.0f, Mathf.Max(maxX, 0.0f)), LockToBottom ? _fixedBottomY : Position.Y);
+        float maxY = GetViewportRect().Size.Y - Size.Y;
+        Position = new Vector2(
+            Mathf.Clamp(x, 0.0f, Mathf.Max(maxX, 0.0f)),
+            LockToBottom ? _fixedBottomY : Mathf.Clamp(y, 0.0f, Mathf.Max(maxY, 0.0f))
+        );
         UpdateRightAnchoredLayout();
     }
 

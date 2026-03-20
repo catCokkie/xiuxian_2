@@ -321,8 +321,9 @@ namespace Xiuxian.Scripts.Game
         private void ReadUiState(ConfigFile config, int version)
         {
             float mainBarX = config.GetValue("ui", "main_bar_x", _mainBar.Position.X).AsSingle();
+            float mainBarY = config.GetValue("ui", "main_bar_y", _mainBar.Position.Y).AsSingle();
             float mainBarWidth = config.GetValue("ui", "main_bar_width", _mainBar.Size.X).AsSingle();
-            _mainBar.ApplyLayout(mainBarX, mainBarWidth);
+            _mainBar.ApplyLayout(mainBarX, mainBarY, mainBarWidth);
 
             float submenuX = config.GetValue("ui", "submenu_x", _submenu.Position.X).AsSingle();
             float submenuY = config.GetValue("ui", "submenu_y", _submenu.Position.Y).AsSingle();
@@ -346,6 +347,7 @@ namespace Xiuxian.Scripts.Game
         private void WriteUiState(ConfigFile config)
         {
             config.SetValue("ui", "main_bar_x", _mainBar.Position.X);
+            config.SetValue("ui", "main_bar_y", _mainBar.Position.Y);
             config.SetValue("ui", "main_bar_width", _mainBar.Size.X);
             config.SetValue("ui", "submenu_x", _submenu.Position.X);
             config.SetValue("ui", "submenu_y", _submenu.Position.Y);

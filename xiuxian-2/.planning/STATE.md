@@ -5,7 +5,7 @@
 See: `.planning/PROJECT.md` (updated 2026-03-19)
 
 **Core value:** The existing prototype should feel stable to use and safe to keep iterating on: the main loop works, the UI behaves predictably, and regressions are caught earlier.
-**Current focus:** Phase 1 — Main UI Stabilization
+**Current focus:** Phase 2 — Regression Expansion
 
 ## Current Status
 
@@ -13,7 +13,8 @@ See: `.planning/PROJECT.md` (updated 2026-03-19)
 - Codebase map exists in `.planning/codebase/`
 - Research artifacts exist in `.planning/research/`
 - Requirements and roadmap are defined
-- Ready to begin phase-level discussion/planning
+- Phase 1 main UI stabilization is complete
+- Ready to begin Phase 2 planning/execution
 
 ## Active Milestone Context
 
@@ -25,11 +26,12 @@ See: `.planning/PROJECT.md` (updated 2026-03-19)
 
 ## Immediate Next Step
 
-- Run `/gsd-plan-phase 1`
+- Run `/gsd-plan-phase 2`
 
 ## Session Continuity
 
-- Phase 1 context captured in `.planning/phases/01-main-ui-stabilization/01-CONTEXT.md`
+- Phase 1 artifacts live under `.planning/phases/01-main-ui-stabilization/`
+- Latest verification outcome: Phase 1 human verification passed (`已通过`)
 
 ---
 *Initialized: 2026-03-19*

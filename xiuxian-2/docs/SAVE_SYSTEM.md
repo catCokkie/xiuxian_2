@@ -55,6 +55,7 @@ The unified save currently writes these sections:
 Written by `PrototypeRootController.WriteUiState()`.
 
 - `main_bar_x`: main bar X position
+- `main_bar_y`: main bar Y position
 - `main_bar_width`: main bar width
 - `submenu_x`: submenu X position
 - `submenu_y`: submenu Y position

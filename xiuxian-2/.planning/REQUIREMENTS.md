@@ -19,10 +19,10 @@
 
 ### Main UI Behavior
 
-- [ ] **UI-01**: User can use the main bar without internal control overlap blocking core information or interaction
-- [ ] **UI-02**: User can drag the main bar to a target position during use
-- [ ] **UI-03**: User can drag the submenu/book window to a target position during use
-- [ ] **UI-04**: Main UI fixes preserve the current core interaction shell instead of replacing it with a new layout system
+- [x] **UI-01**: User can use the main bar without internal control overlap blocking core information or interaction
+- [x] **UI-02**: User can drag the main bar to a target position during use
+- [x] **UI-03**: User can drag the submenu/book window to a target position during use
+- [x] **UI-04**: Main UI fixes preserve the current core interaction shell instead of replacing it with a new layout system
 
 ### Display Cleanup
 
@@ -70,10 +70,10 @@
 | TEST-01 | Phase 2 | Pending |
 | TEST-02 | Phase 2 | Pending |
 | TEST-03 | Phase 2 | Pending |
-| UI-01 | Phase 1 | Pending |
-| UI-02 | Phase 1 | Pending |
-| UI-03 | Phase 1 | Pending |
-| UI-04 | Phase 1 | Pending |
+| UI-01 | Phase 1 | Complete |
+| UI-02 | Phase 1 | Complete |
+| UI-03 | Phase 1 | Complete |
+| UI-04 | Phase 1 | Complete |
 | DISP-01 | Phase 4 | Pending |
 | DISP-02 | Phase 4 | Pending |
 | SAFE-01 | Phase 3 | Pending |
@@ -86,4 +86,4 @@
 
 ---
 *Requirements defined: 2026-03-19*
-*Last updated: 2026-03-19 after initial definition*
+*Last updated: 2026-03-19 after Phase 1 completion*
