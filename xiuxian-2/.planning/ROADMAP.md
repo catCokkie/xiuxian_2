@@ -50,6 +50,11 @@
 3. Additional tests are added or updated for maintenance-sensitive logic touched during this milestone.
 4. Build + test evidence is part of the phase completion check.
 
+**Plans:** 1 plan
+
+Plans:
+- [ ] `02-01-PLAN.md` — add breakthrough-threshold regression coverage and wire `PlayerProgressState` to a deterministic testable rule
+
 ### Phase 3: Runtime Safety Cleanup
 
 **Goal:** Make sure stabilization work does not leave behind save/runtime inconsistencies or developer-tool leakage.

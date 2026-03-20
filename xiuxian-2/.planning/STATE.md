@@ -32,6 +32,7 @@ See: `.planning/PROJECT.md` (updated 2026-03-19)
 
 - Phase 1 artifacts live under `.planning/phases/01-main-ui-stabilization/`
 - Latest verification outcome: Phase 1 human verification passed (`已通过`)
+- Phase 2 context captured in `.planning/phases/02-regression-expansion/02-CONTEXT.md`
 
 ---
 *Initialized: 2026-03-19*
