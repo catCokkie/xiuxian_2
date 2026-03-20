@@ -56,6 +56,8 @@ Written by `PrototypeRootController.WriteUiState()`.
 
 - `main_bar_x`: main bar X position
 - `main_bar_width`: main bar width
+- `submenu_x`: submenu X position
+- `submenu_y`: submenu Y position
 - `submenu_visible`: whether submenu window is visible
 - `submenu_active_left_tab`: active left tab id
 - `submenu_active_right_tab`: active right tab id

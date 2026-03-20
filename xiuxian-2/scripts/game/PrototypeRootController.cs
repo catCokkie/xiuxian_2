@@ -56,6 +56,7 @@ namespace Xiuxian.Scripts.Game
 
             _mainBar.BookButtonPressed += _submenu.ToggleVisible;
             _mainBar.LayoutChanged += (_, _) => MarkDirty();
+            _submenu.LayoutChanged += (_, _) => MarkDirty();
             _submenu.VisibilityChanged += _ => MarkDirty();
             _bookTabs.ActiveTabsChanged += (_, _) =>
             {
@@ -323,6 +324,10 @@ namespace Xiuxian.Scripts.Game
             float mainBarWidth = config.GetValue("ui", "main_bar_width", _mainBar.Size.X).AsSingle();
             _mainBar.ApplyLayout(mainBarX, mainBarWidth);
 
+            float submenuX = config.GetValue("ui", "submenu_x", _submenu.Position.X).AsSingle();
+            float submenuY = config.GetValue("ui", "submenu_y", _submenu.Position.Y).AsSingle();
+            _submenu.ApplySavedLayout(submenuX, submenuY);
+
             string activeLeftTab = config.GetValue("ui", "submenu_active_left_tab", "CultivationTab").AsString();
             string activeRightTab = config.GetValue("ui", "submenu_active_right_tab", "OnlineTab").AsString();
 
@@ -342,6 +347,8 @@ namespace Xiuxian.Scripts.Game
         {
             config.SetValue("ui", "main_bar_x", _mainBar.Position.X);
             config.SetValue("ui", "main_bar_width", _mainBar.Size.X);
+            config.SetValue("ui", "submenu_x", _submenu.Position.X);
+            config.SetValue("ui", "submenu_y", _submenu.Position.Y);
             config.SetValue("ui", "submenu_visible", _submenu.Visible);
             config.SetValue("ui", "submenu_active_left_tab", _bookTabs.ActiveLeftTabName);
             config.SetValue("ui", "submenu_active_right_tab", _bookTabs.ActiveRightTabName);

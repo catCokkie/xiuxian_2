@@ -88,29 +88,46 @@ public partial class MainBarLayoutController : Control
 
     public override void _Process(double delta)
     {
+        float maxX = Mathf.Max(0.0f, GetViewportRect().Size.X - Size.X);
+        float clampedX = Mathf.Clamp(Position.X, 0.0f, maxX);
+
         if (!LockToBottom)
         {
+            if (!Mathf.IsEqualApprox(Position.X, clampedX))
+            {
+                Position = new Vector2(clampedX, Position.Y);
+            }
             return;
         }
 
         float nextY = GetBottomLockedY();
         _fixedBottomY = nextY;
-        if (!Mathf.IsEqualApprox(Position.Y, nextY))
+        if (!Mathf.IsEqualApprox(Position.X, clampedX) || !Mathf.IsEqualApprox(Position.Y, nextY))
         {
-            Position = new Vector2(Position.X, nextY);
+            Position = new Vector2(clampedX, nextY);
         }
     }
 
     public override void _Input(InputEvent @event)
     {
-        if (@event is InputEventMouseButton mouseButton && !mouseButton.Pressed)
+        if (@event is InputEventMouseButton mouseButton && mouseButton.ButtonIndex == MouseButton.Left)
         {
-            if (_isDragging || _isResizing)
+            if (mouseButton.Pressed)
             {
-                EmitSignal(SignalName.LayoutChanged, Position.X, Size.X);
+                TryBeginBlankAreaDrag(mouseButton.GlobalPosition);
             }
-            _isDragging = false;
-            _isResizing = false;
+            else
+            {
+                if (_isDragging || _isResizing)
+                {
+                    EmitSignal(SignalName.LayoutChanged, Position.X, Size.X);
+                }
+
+                _isDragging = false;
+                _isResizing = false;
+            }
+
+            return;
         }
 
         if (@event is not InputEventMouseMotion mouseMotion)
@@ -141,8 +158,10 @@ public partial class MainBarLayoutController : Control
     {
         if (@event is InputEventMouseButton mouseButton && mouseButton.ButtonIndex == MouseButton.Left)
         {
-            _isDragging = mouseButton.Pressed;
-            _lastMousePos = mouseButton.GlobalPosition;
+            if (mouseButton.Pressed)
+            {
+                BeginDrag(mouseButton.GlobalPosition);
+            }
         }
     }
 
@@ -256,5 +275,58 @@ public partial class MainBarLayoutController : Control
     {
         float y = GetViewportRect().Size.Y - Size.Y - _bottomMargin;
         return Mathf.Max(0.0f, y);
+    }
+
+    private void TryBeginBlankAreaDrag(Vector2 pointerGlobalPosition)
+    {
+        if (!Visible)
+        {
+            return;
+        }
+
+        var windowRect = new Rect2(Position, Size);
+        if (!windowRect.HasPoint(pointerGlobalPosition))
+        {
+            return;
+        }
+
+        Control? hovered = GetViewport().GuiGetHoveredControl();
+        if (hovered == null || !IsAncestorOf(hovered))
+        {
+            BeginDrag(pointerGlobalPosition);
+            return;
+        }
+
+        if (hovered == _resizeHandle)
+        {
+            return;
+        }
+
+        if (hovered == _dragHandle)
+        {
+            BeginDrag(pointerGlobalPosition);
+            return;
+        }
+
+        if (IsInteractionTarget(hovered))
+        {
+            return;
+        }
+
+        BeginDrag(pointerGlobalPosition);
+    }
+
+    private void BeginDrag(Vector2 pointerGlobalPosition)
+    {
+        _isDragging = true;
+        _lastMousePos = pointerGlobalPosition;
+    }
+
+    private bool IsInteractionTarget(Control control)
+    {
+        return control is BaseButton
+            || control is OptionButton
+            || control is RichTextLabel
+            || control is ProgressBar;
     }
 }
