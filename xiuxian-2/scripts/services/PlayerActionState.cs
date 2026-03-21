@@ -40,16 +40,16 @@ namespace Xiuxian.Scripts.Services
 
         public Godot.Collections.Dictionary<string, Variant> ToDictionary()
         {
-            return new Godot.Collections.Dictionary<string, Variant>
+            return StateSerializationContracts.NormalizePlayerAction(new Godot.Collections.Dictionary<string, Variant>
             {
                 ["mode_id"] = _modeId
-            };
+            });
         }
 
         public void FromDictionary(Godot.Collections.Dictionary<string, Variant> data)
         {
-            string modeId = data.ContainsKey("mode_id") ? data["mode_id"].AsString() : ModeDungeon;
-            _modeId = NormalizeMode(modeId);
+            var normalized = StateSerializationContracts.NormalizePlayerAction(data);
+            _modeId = normalized["mode_id"].AsString();
             EmitSignal(SignalName.ModeChanged, _modeId);
         }
 

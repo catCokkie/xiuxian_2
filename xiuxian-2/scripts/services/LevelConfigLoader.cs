@@ -223,6 +223,8 @@ namespace Xiuxian.Scripts.Services
             private readonly Dictionary<string, long> _dailyRollDayByTable = new();
             private readonly Dictionary<string, int> _hourlyRollCountByTable = new();
             private readonly Dictionary<string, long> _hourlyRollHourByTable = new();
+            private readonly List<string> _validationIssues = new();
+            private readonly List<Godot.Collections.Dictionary<string, Variant>> _validationEntries = new();
             private int _activeLevelIndex;
 
             public SeamRuntime(IConfigSource configSource, IRng rng, IClock clock)
@@ -245,6 +247,8 @@ namespace Xiuxian.Scripts.Services
                 _dailyRollDayByTable.Clear();
                 _hourlyRollCountByTable.Clear();
                 _hourlyRollHourByTable.Clear();
+                _validationIssues.Clear();
+                _validationEntries.Clear();
 
                 if (!_configSource.TryReadAllText(configPath, out string text))
                 {
@@ -261,7 +265,55 @@ namespace Xiuxian.Scripts.Services
                 ParseLevelsSection();
                 IndexMonsters();
                 IndexDropTables();
+                ValidateConfiguration();
                 return _levels.Count > 0;
+            }
+
+            public Godot.Collections.Array<string> GetValidationIssues()
+            {
+                var result = new Godot.Collections.Array<string>();
+                foreach (string issue in _validationIssues)
+                {
+                    result.Add(issue);
+                }
+
+                return result;
+            }
+
+            public Godot.Collections.Array<Godot.Collections.Dictionary<string, Variant>> GetValidationEntries()
+            {
+                var result = new Godot.Collections.Array<Godot.Collections.Dictionary<string, Variant>>();
+                foreach (var entry in _validationEntries)
+                {
+                    result.Add(new Godot.Collections.Dictionary<string, Variant>(entry));
+                }
+
+                return result;
+            }
+
+            public string BuildValidationSummary(int maxLines = 12)
+            {
+                if (_validationIssues.Count == 0)
+                {
+                    return "config validation: OK";
+                }
+
+                int lines = Math.Max(1, maxLines);
+                var sb = new StringBuilder();
+                sb.Append($"config validation: {_validationIssues.Count} issue(s)");
+
+                int count = Math.Min(lines, _validationIssues.Count);
+                for (int i = 0; i < count; i++)
+                {
+                    sb.Append($"\n- {_validationIssues[i]}");
+                }
+
+                if (_validationIssues.Count > count)
+                {
+                    sb.Append($"\n- ... and {_validationIssues.Count - count} more");
+                }
+
+                return sb.ToString();
             }
 
             public bool TryRollMonsterSettlementReward(string monsterId, out double lingqi, out double insight)
@@ -633,6 +685,408 @@ namespace Xiuxian.Scripts.Services
                 }
 
                 return configuredDropTableId;
+            }
+
+            private void ValidateConfiguration()
+            {
+                _validationIssues.Clear();
+                _validationEntries.Clear();
+
+                if (_levels.Count == 0)
+                {
+                    AddValidationIssue(
+                        scope: "config",
+                        id: "levels",
+                        field: "levels[]",
+                        message: "is empty");
+                    return;
+                }
+
+                var levelIds = new HashSet<string>();
+                foreach (var level in _levels)
+                {
+                    string levelId = GetString(level, "level_id", "");
+                    if (string.IsNullOrEmpty(levelId))
+                    {
+                        AddValidationIssue(
+                            scope: "level",
+                            id: "(unknown-level)",
+                            field: "level_id",
+                            message: "missing");
+                    }
+                    else
+                    {
+                        levelIds.Add(levelId);
+                    }
+
+                    ValidateLevelSpawnTable(level, levelId);
+                }
+
+                ValidateMonsters();
+                ValidateDropTables(levelIds);
+            }
+
+            private void ValidateLevelSpawnTable(Godot.Collections.Dictionary<string, Variant> level, string levelId)
+            {
+                string id = string.IsNullOrEmpty(levelId) ? "(unknown-level)" : levelId;
+                if (!level.ContainsKey("spawn_table") || level["spawn_table"].VariantType != Variant.Type.Array)
+                {
+                    AddValidationIssue(
+                        scope: "level",
+                        id: id,
+                        field: "spawn_table",
+                        message: "missing or not array",
+                        levelId: id);
+                    return;
+                }
+
+                var spawnTable = (Godot.Collections.Array<Variant>)level["spawn_table"];
+                if (spawnTable.Count == 0)
+                {
+                    AddValidationIssue(
+                        scope: "level",
+                        id: id,
+                        field: "spawn_table",
+                        message: "is empty",
+                        levelId: id);
+                    return;
+                }
+
+                int totalWeight = 0;
+                for (int i = 0; i < spawnTable.Count; i++)
+                {
+                    Variant item = spawnTable[i];
+                    if (item.VariantType != Variant.Type.Dictionary)
+                    {
+                        AddValidationIssue(
+                            scope: "level",
+                            id: id,
+                            field: $"spawn_table[{i}]",
+                            message: "is not dictionary",
+                            levelId: id);
+                        continue;
+                    }
+
+                    var entry = (Godot.Collections.Dictionary<string, Variant>)item;
+                    string monsterId = GetString(entry, "monster_id", "");
+                    int weight = Math.Max(0, entry.ContainsKey("weight") ? entry["weight"].AsInt32() : 0);
+                    totalWeight += weight;
+
+                    if (string.IsNullOrEmpty(monsterId))
+                    {
+                        AddValidationIssue(
+                            scope: "level",
+                            id: id,
+                            field: $"spawn_table[{i}].monster_id",
+                            message: "missing",
+                            levelId: id);
+                    }
+                    else if (!_monsterById.ContainsKey(monsterId))
+                    {
+                        AddValidationIssue(
+                            scope: "level",
+                            id: id,
+                            field: $"spawn_table[{i}].monster_id",
+                            message: $"spawn monster '{monsterId}' not found in monsters[]",
+                            levelId: id,
+                            monsterId: monsterId);
+                    }
+
+                    if (weight <= 0)
+                    {
+                        AddValidationIssue(
+                            scope: "level",
+                            id: id,
+                            field: $"spawn_table[{i}].weight",
+                            message: "weight <= 0",
+                            levelId: id,
+                            monsterId: monsterId);
+                    }
+                }
+
+                if (totalWeight <= 0)
+                {
+                    AddValidationIssue(
+                        scope: "level",
+                        id: id,
+                        field: "spawn_table.total_weight",
+                        message: "total weight <= 0",
+                        levelId: id);
+                }
+                else if (totalWeight != 100)
+                {
+                    AddValidationIssue(
+                        scope: "level",
+                        id: id,
+                        field: "spawn_table.total_weight",
+                        message: $"total weight = {totalWeight} (expected 100)",
+                        levelId: id);
+                }
+            }
+
+            private void ValidateMonsters()
+            {
+                foreach (var kv in _monsterById)
+                {
+                    string monsterId = kv.Key;
+                    var monster = kv.Value;
+                    if (!TryGetChildDictionary(monster, "drops", out var drops))
+                    {
+                        AddValidationIssue(
+                            scope: "monster",
+                            id: monsterId,
+                            field: "drops",
+                            message: "section missing",
+                            monsterId: monsterId);
+                        continue;
+                    }
+
+                    string tableId = GetString(drops, "drop_table_id", "");
+                    if (string.IsNullOrEmpty(tableId))
+                    {
+                        AddValidationIssue(
+                            scope: "monster",
+                            id: monsterId,
+                            field: "drops.drop_table_id",
+                            message: "missing",
+                            monsterId: monsterId);
+                        continue;
+                    }
+
+                    if (!_dropTableById.ContainsKey(tableId))
+                    {
+                        AddValidationIssue(
+                            scope: "monster",
+                            id: monsterId,
+                            field: "drops.drop_table_id",
+                            message: $"drop table '{tableId}' not found",
+                            monsterId: monsterId,
+                            dropTableId: tableId);
+                    }
+                }
+            }
+
+            private void ValidateDropTables(HashSet<string> levelIds)
+            {
+                if (_dropTableById.Count == 0)
+                {
+                    AddValidationIssue(
+                        scope: "config",
+                        id: "drop_tables",
+                        field: "drop_tables[]",
+                        message: "is empty");
+                    return;
+                }
+
+                foreach (var kv in _dropTableById)
+                {
+                    string tableId = kv.Key;
+                    var table = kv.Value;
+
+                    string bindLevelId = GetString(table, "bind_level_id", "");
+                    if (string.IsNullOrEmpty(bindLevelId))
+                    {
+                        AddValidationIssue(
+                            scope: "drop_table",
+                            id: tableId,
+                            field: "bind_level_id",
+                            message: "missing",
+                            dropTableId: tableId);
+                    }
+                    else if (!levelIds.Contains(bindLevelId))
+                    {
+                        AddValidationIssue(
+                            scope: "drop_table",
+                            id: tableId,
+                            field: "bind_level_id",
+                            message: $"'{bindLevelId}' not found in levels[]",
+                            levelId: bindLevelId,
+                            dropTableId: tableId);
+                    }
+
+                    if (!table.ContainsKey("bind_monster_ids") || table["bind_monster_ids"].VariantType != Variant.Type.Array)
+                    {
+                        AddValidationIssue(
+                            scope: "drop_table",
+                            id: tableId,
+                            field: "bind_monster_ids",
+                            message: "missing or not array",
+                            dropTableId: tableId);
+                    }
+                    else
+                    {
+                        var boundMonsters = (Godot.Collections.Array<Variant>)table["bind_monster_ids"];
+                        if (boundMonsters.Count == 0)
+                        {
+                            AddValidationIssue(
+                                scope: "drop_table",
+                                id: tableId,
+                                field: "bind_monster_ids",
+                                message: "is empty",
+                                dropTableId: tableId);
+                        }
+
+                        for (int i = 0; i < boundMonsters.Count; i++)
+                        {
+                            string monsterId = boundMonsters[i].AsString();
+                            if (string.IsNullOrEmpty(monsterId))
+                            {
+                                AddValidationIssue(
+                                    scope: "drop_table",
+                                    id: tableId,
+                                    field: $"bind_monster_ids[{i}]",
+                                    message: "is empty",
+                                    dropTableId: tableId);
+                                continue;
+                            }
+
+                            if (!_monsterById.ContainsKey(monsterId))
+                            {
+                                AddValidationIssue(
+                                    scope: "drop_table",
+                                    id: tableId,
+                                    field: $"bind_monster_ids[{i}]",
+                                    message: $"bound monster '{monsterId}' not found",
+                                    monsterId: monsterId,
+                                    dropTableId: tableId);
+                            }
+                        }
+                    }
+
+                    if (!table.ContainsKey("entries") || table["entries"].VariantType != Variant.Type.Array)
+                    {
+                        AddValidationIssue(
+                            scope: "drop_table",
+                            id: tableId,
+                            field: "entries",
+                            message: "missing or not array",
+                            dropTableId: tableId);
+                        continue;
+                    }
+
+                    var entries = (Godot.Collections.Array<Variant>)table["entries"];
+                    if (entries.Count == 0)
+                    {
+                        AddValidationIssue(
+                            scope: "drop_table",
+                            id: tableId,
+                            field: "entries",
+                            message: "is empty",
+                            dropTableId: tableId);
+                        continue;
+                    }
+
+                    int totalWeight = 0;
+                    for (int i = 0; i < entries.Count; i++)
+                    {
+                        Variant item = entries[i];
+                        if (item.VariantType != Variant.Type.Dictionary)
+                        {
+                            AddValidationIssue(
+                                scope: "drop_table",
+                                id: tableId,
+                                field: $"entries[{i}]",
+                                message: "is not dictionary",
+                                dropTableId: tableId);
+                            continue;
+                        }
+
+                        var entry = (Godot.Collections.Dictionary<string, Variant>)item;
+                        string itemId = GetString(entry, "item_id", "");
+                        int weight = Math.Max(0, entry.ContainsKey("weight") ? entry["weight"].AsInt32() : 0);
+                        int qtyMin = Math.Max(0, entry.ContainsKey("qty_min") ? entry["qty_min"].AsInt32() : 0);
+                        int qtyMax = Math.Max(0, entry.ContainsKey("qty_max") ? entry["qty_max"].AsInt32() : 0);
+                        totalWeight += weight;
+
+                        if (string.IsNullOrEmpty(itemId))
+                        {
+                            AddValidationIssue(
+                                scope: "drop_table",
+                                id: tableId,
+                                field: $"entries[{i}].item_id",
+                                message: "missing",
+                                dropTableId: tableId);
+                        }
+                        if (weight <= 0)
+                        {
+                            AddValidationIssue(
+                                scope: "drop_table",
+                                id: tableId,
+                                field: $"entries[{i}].weight",
+                                message: "weight <= 0",
+                                dropTableId: tableId);
+                        }
+                        if (qtyMax < qtyMin)
+                        {
+                            AddValidationIssue(
+                                scope: "drop_table",
+                                id: tableId,
+                                field: $"entries[{i}].qty_max",
+                                message: "qty_max < qty_min",
+                                dropTableId: tableId);
+                        }
+                    }
+
+                    if (totalWeight <= 0)
+                    {
+                        AddValidationIssue(
+                            scope: "drop_table",
+                            id: tableId,
+                            field: "entries.total_weight",
+                            message: "total weight <= 0",
+                            dropTableId: tableId);
+                    }
+                    else if (totalWeight != 100)
+                    {
+                        AddValidationIssue(
+                            scope: "drop_table",
+                            id: tableId,
+                            field: "entries.total_weight",
+                            message: $"total weight = {totalWeight} (expected 100)",
+                            dropTableId: tableId);
+                    }
+                }
+            }
+
+            private void AddValidationIssue(
+                string scope,
+                string id,
+                string field,
+                string message,
+                string severity = "error",
+                string levelId = "",
+                string monsterId = "",
+                string dropTableId = "")
+            {
+                string normalizedScope = string.IsNullOrEmpty(scope) ? "config" : scope;
+                string normalizedId = string.IsNullOrEmpty(id) ? "(unknown)" : id;
+                string normalizedField = string.IsNullOrEmpty(field) ? "(unknown)" : field;
+                string normalizedSeverity = string.IsNullOrEmpty(severity) ? "error" : severity;
+                string normalizedMessage = string.IsNullOrEmpty(message) ? "validation failed" : message;
+
+                var entry = new Godot.Collections.Dictionary<string, Variant>
+                {
+                    ["scope"] = normalizedScope,
+                    ["id"] = normalizedId,
+                    ["field"] = normalizedField,
+                    ["severity"] = normalizedSeverity,
+                    ["message"] = normalizedMessage,
+                    ["level_id"] = levelId,
+                    ["monster_id"] = monsterId,
+                    ["drop_table_id"] = dropTableId
+                };
+
+                _validationEntries.Add(entry);
+                _validationIssues.Add(BuildValidationIssueMessage(entry));
+            }
+
+            private static string BuildValidationIssueMessage(Godot.Collections.Dictionary<string, Variant> entry)
+            {
+                string scope = entry.ContainsKey("scope") ? entry["scope"].AsString() : "config";
+                string id = entry.ContainsKey("id") ? entry["id"].AsString() : "(unknown)";
+                string field = entry.ContainsKey("field") ? entry["field"].AsString() : "(unknown)";
+                string message = entry.ContainsKey("message") ? entry["message"].AsString() : "validation failed";
+                return $"{scope} {id}: {field} {message}.";
             }
         }
 
@@ -1425,35 +1879,26 @@ namespace Xiuxian.Scripts.Services
 
         public Godot.Collections.Dictionary<string, Variant> ToRuntimeDictionary()
         {
-            var unlocked = new Godot.Collections.Array<Variant>();
-            foreach (string levelId in _unlockedLevelIds)
+            var state = new LevelRuntimeSerializationState
             {
-                unlocked.Add(levelId);
-            }
-
-            var bossCleared = new Godot.Collections.Array<Variant>();
-            foreach (string levelId in _bossClearedLevelIds)
-            {
-                bossCleared.Add(levelId);
-            }
-
-            return new Godot.Collections.Dictionary<string, Variant>
-            {
-                ["active_level_id"] = ActiveLevelId,
-                ["active_wave_index"] = _activeLevelWaveIndex,
-                ["unlocked_level_ids"] = unlocked,
-                ["boss_cleared_level_ids"] = bossCleared,
-                ["level_clear_count_by_id"] = IntDictionaryToVariantDictionary(_levelClearCountById),
-                ["pity_counter_by_key"] = IntDictionaryToVariantDictionary(_pityCounterByKey),
-                ["daily_roll_count_by_table"] = IntDictionaryToVariantDictionary(_dailyRollCountByTable),
-                ["daily_roll_day_by_table"] = LongDictionaryToVariantDictionary(_dailyRollDayByTable),
-                ["hourly_roll_count_by_table"] = IntDictionaryToVariantDictionary(_hourlyRollCountByTable),
-                ["hourly_roll_hour_by_table"] = LongDictionaryToVariantDictionary(_hourlyRollHourByTable)
+                ActiveLevelId = ActiveLevelId,
+                ActiveWaveIndex = _activeLevelWaveIndex
             };
+
+            CopyHashSet(_unlockedLevelIds, state.UnlockedLevelIds);
+            CopyHashSet(_bossClearedLevelIds, state.BossClearedLevelIds);
+            CopyDictionary(_levelClearCountById, state.LevelClearCountById);
+            CopyDictionary(_pityCounterByKey, state.PityCounterByKey);
+            CopyDictionary(_dailyRollCountByTable, state.DailyRollCountByTable);
+            CopyDictionary(_dailyRollDayByTable, state.DailyRollDayByTable);
+            CopyDictionary(_hourlyRollCountByTable, state.HourlyRollCountByTable);
+            CopyDictionary(_hourlyRollHourByTable, state.HourlyRollHourByTable);
+            return LevelRuntimeSerializationContracts.ToDictionary(state);
         }
 
         public void FromRuntimeDictionary(Godot.Collections.Dictionary<string, Variant> data)
         {
+            var state = LevelRuntimeSerializationContracts.Normalize(data, ActiveLevelId, GetKnownLevelIds(), _activeLevelMonsterWave.Count);
             _pityCounterByKey.Clear();
             _levelClearCountById.Clear();
             _dailyRollCountByTable.Clear();
@@ -1463,80 +1908,60 @@ namespace Xiuxian.Scripts.Services
             _unlockedLevelIds.Clear();
             _bossClearedLevelIds.Clear();
 
-            if (data.ContainsKey("level_clear_count_by_id") && data["level_clear_count_by_id"].VariantType == Variant.Type.Dictionary)
+            CopyDictionary(state.LevelClearCountById, _levelClearCountById);
+            CopyDictionary(state.PityCounterByKey, _pityCounterByKey);
+            CopyDictionary(state.DailyRollCountByTable, _dailyRollCountByTable);
+            CopyDictionary(state.DailyRollDayByTable, _dailyRollDayByTable);
+            CopyDictionary(state.HourlyRollCountByTable, _hourlyRollCountByTable);
+            CopyDictionary(state.HourlyRollHourByTable, _hourlyRollHourByTable);
+            CopyHashSet(state.UnlockedLevelIds, _unlockedLevelIds);
+            CopyHashSet(state.BossClearedLevelIds, _bossClearedLevelIds);
+
+            if (!string.IsNullOrEmpty(state.ActiveLevelId))
             {
-                VariantDictionaryToIntDictionary((Godot.Collections.Dictionary<string, Variant>)data["level_clear_count_by_id"], _levelClearCountById);
-            }
-            if (data.ContainsKey("pity_counter_by_key") && data["pity_counter_by_key"].VariantType == Variant.Type.Dictionary)
-            {
-                VariantDictionaryToIntDictionary((Godot.Collections.Dictionary<string, Variant>)data["pity_counter_by_key"], _pityCounterByKey);
-            }
-            if (data.ContainsKey("daily_roll_count_by_table") && data["daily_roll_count_by_table"].VariantType == Variant.Type.Dictionary)
-            {
-                VariantDictionaryToIntDictionary((Godot.Collections.Dictionary<string, Variant>)data["daily_roll_count_by_table"], _dailyRollCountByTable);
-            }
-            if (data.ContainsKey("daily_roll_day_by_table") && data["daily_roll_day_by_table"].VariantType == Variant.Type.Dictionary)
-            {
-                VariantDictionaryToLongDictionary((Godot.Collections.Dictionary<string, Variant>)data["daily_roll_day_by_table"], _dailyRollDayByTable);
-            }
-            if (data.ContainsKey("hourly_roll_count_by_table") && data["hourly_roll_count_by_table"].VariantType == Variant.Type.Dictionary)
-            {
-                VariantDictionaryToIntDictionary((Godot.Collections.Dictionary<string, Variant>)data["hourly_roll_count_by_table"], _hourlyRollCountByTable);
-            }
-            if (data.ContainsKey("hourly_roll_hour_by_table") && data["hourly_roll_hour_by_table"].VariantType == Variant.Type.Dictionary)
-            {
-                VariantDictionaryToLongDictionary((Godot.Collections.Dictionary<string, Variant>)data["hourly_roll_hour_by_table"], _hourlyRollHourByTable);
+                TrySetActiveLevel(state.ActiveLevelId);
             }
 
-            if (data.ContainsKey("active_level_id"))
+            _activeLevelWaveIndex = state.ActiveWaveIndex;
+        }
+
+        private static void CopyHashSet(HashSet<string> source, HashSet<string> destination)
+        {
+            foreach (string value in source)
             {
-                string levelId = data["active_level_id"].AsString();
+                destination.Add(value);
+            }
+        }
+
+        private static void CopyDictionary(Dictionary<string, int> source, Dictionary<string, int> destination)
+        {
+            foreach (var item in source)
+            {
+                destination[item.Key] = item.Value;
+            }
+        }
+
+        private static void CopyDictionary(Dictionary<string, long> source, Dictionary<string, long> destination)
+        {
+            foreach (var item in source)
+            {
+                destination[item.Key] = item.Value;
+            }
+        }
+
+        private List<string> GetKnownLevelIds()
+        {
+            var levelIds = new List<string>();
+            foreach (var level in _levels)
+            {
+                string levelId = GetString(level, "level_id", "");
                 if (!string.IsNullOrEmpty(levelId))
                 {
-                    TrySetActiveLevel(levelId);
+                    levelIds.Add(levelId);
                 }
             }
 
-            if (data.ContainsKey("unlocked_level_ids") && data["unlocked_level_ids"].VariantType == Variant.Type.Array)
-            {
-                var unlocked = (Godot.Collections.Array<Variant>)data["unlocked_level_ids"];
-                foreach (Variant v in unlocked)
-                {
-                    string levelId = v.AsString();
-                    if (!string.IsNullOrEmpty(levelId))
-                    {
-                        _unlockedLevelIds.Add(levelId);
-                    }
-                }
-            }
-
-            if (data.ContainsKey("boss_cleared_level_ids") && data["boss_cleared_level_ids"].VariantType == Variant.Type.Array)
-            {
-                var cleared = (Godot.Collections.Array<Variant>)data["boss_cleared_level_ids"];
-                foreach (Variant v in cleared)
-                {
-                    string levelId = v.AsString();
-                    if (!string.IsNullOrEmpty(levelId))
-                    {
-                        _bossClearedLevelIds.Add(levelId);
-                    }
-                }
-            }
-
-            EnsureLevelUnlockBootstrap();
-
-            if (data.ContainsKey("active_wave_index"))
-            {
-                int savedWaveIndex = data["active_wave_index"].AsInt32();
-                if (_activeLevelMonsterWave.Count > 0)
-                {
-                    _activeLevelWaveIndex = Math.Clamp(savedWaveIndex, 0, _activeLevelMonsterWave.Count - 1);
-                }
-                else
-                {
-                    _activeLevelWaveIndex = 0;
-                }
-            }
+            return levelIds;
         }
 
         private void EnsureLevelUnlockBootstrap()

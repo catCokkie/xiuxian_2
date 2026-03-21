@@ -1,20 +1,21 @@
-using Godot;
+using System.Collections.Generic;
+
 namespace Xiuxian2.Core.Tests.Support.Serialization;
 
 public static class StateSerializationFixtureBuilder
 {
-    public static Godot.Collections.Dictionary<string, Variant> CreateBackpackRoundTripPayload()
+    public static Dictionary<string, object?> CreateBackpackRoundTripPayload()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["spirit_stone"] = 12,
             ["starter_herb"] = 3
         };
     }
 
-    public static Godot.Collections.Dictionary<string, Variant> CreateResourceWalletRoundTripPayload()
+    public static Dictionary<string, object?> CreateResourceWalletRoundTripPayload()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["lingqi"] = 123.5,
             ["insight"] = 9.75,
@@ -22,9 +23,9 @@ public static class StateSerializationFixtureBuilder
         };
     }
 
-    public static Godot.Collections.Dictionary<string, Variant> CreatePlayerProgressRoundTripPayload()
+    public static Dictionary<string, object?> CreatePlayerProgressRoundTripPayload()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["realm_level"] = 2,
             ["realm_exp"] = 15.0,
@@ -32,9 +33,9 @@ public static class StateSerializationFixtureBuilder
         };
     }
 
-    public static Godot.Collections.Dictionary<string, Variant> CreateInputActivityRoundTripPayload()
+    public static Dictionary<string, object?> CreateInputActivityRoundTripPayload()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["total_key_down"] = 1L,
             ["total_mouse_click"] = 1L,
@@ -46,43 +47,43 @@ public static class StateSerializationFixtureBuilder
         };
     }
 
-    public static Godot.Collections.Dictionary<string, Variant> CreatePlayerActionRoundTripPayload()
+    public static Dictionary<string, object?> CreatePlayerActionRoundTripPayload()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["mode_id"] = "cultivation"
         };
     }
 
-    public static Godot.Collections.Dictionary<string, Variant> CreateBackpackMalformedPayload()
+    public static Dictionary<string, object?> CreateBackpackMalformedPayload()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["spirit_stone"] = "bad",
             ["starter_herb"] = 2
         };
     }
 
-    public static Godot.Collections.Dictionary<string, Variant> CreateBackpackMalformedExpectation()
+    public static Dictionary<string, object?> CreateBackpackMalformedExpectation()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["spirit_stone"] = 0,
             ["starter_herb"] = 2
         };
     }
 
-    public static Godot.Collections.Dictionary<string, Variant> CreateResourceWalletMalformedPayload()
+    public static Dictionary<string, object?> CreateResourceWalletMalformedPayload()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["lingqi"] = "bad"
         };
     }
 
-    public static Godot.Collections.Dictionary<string, Variant> CreateResourceWalletMalformedExpectation()
+    public static Dictionary<string, object?> CreateResourceWalletMalformedExpectation()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["lingqi"] = 0.0,
             ["insight"] = 0.0,
@@ -90,9 +91,9 @@ public static class StateSerializationFixtureBuilder
         };
     }
 
-    public static Godot.Collections.Dictionary<string, Variant> CreatePlayerProgressMalformedPayload()
+    public static Dictionary<string, object?> CreatePlayerProgressMalformedPayload()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["realm_level"] = 0,
             ["realm_exp"] = -7.0,
@@ -100,9 +101,9 @@ public static class StateSerializationFixtureBuilder
         };
     }
 
-    public static Godot.Collections.Dictionary<string, Variant> CreatePlayerProgressMalformedExpectation()
+    public static Dictionary<string, object?> CreatePlayerProgressMalformedExpectation()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["realm_level"] = 1,
             ["realm_exp"] = 0.0,
@@ -110,9 +111,9 @@ public static class StateSerializationFixtureBuilder
         };
     }
 
-    public static Godot.Collections.Dictionary<string, Variant> CreateInputActivityMalformedPayload()
+    public static Dictionary<string, object?> CreateInputActivityMalformedPayload()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["total_key_down"] = "bad",
             ["total_mouse_click"] = -5,
@@ -121,9 +122,9 @@ public static class StateSerializationFixtureBuilder
         };
     }
 
-    public static Godot.Collections.Dictionary<string, Variant> CreateInputActivityMalformedExpectation()
+    public static Dictionary<string, object?> CreateInputActivityMalformedExpectation()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["total_key_down"] = 0L,
             ["total_mouse_click"] = 0L,
@@ -135,17 +136,17 @@ public static class StateSerializationFixtureBuilder
         };
     }
 
-    public static Godot.Collections.Dictionary<string, Variant> CreatePlayerActionMalformedPayload()
+    public static Dictionary<string, object?> CreatePlayerActionMalformedPayload()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["mode_id"] = "invalid"
         };
     }
 
-    public static Godot.Collections.Dictionary<string, Variant> CreatePlayerActionMalformedExpectation()
+    public static Dictionary<string, object?> CreatePlayerActionMalformedExpectation()
     {
-        return new Godot.Collections.Dictionary<string, Variant>
+        return new Dictionary<string, object?>
         {
             ["mode_id"] = "dungeon"
         };

@@ -288,7 +288,7 @@ namespace Xiuxian.Scripts.Services
 
         public Godot.Collections.Dictionary<string, Variant> ToDictionary()
         {
-            return new Godot.Collections.Dictionary<string, Variant>
+            return StateSerializationContracts.NormalizeInputActivity(new Godot.Collections.Dictionary<string, Variant>
             {
                 ["total_key_down"] = TotalKeyDownCount,
                 ["total_mouse_click"] = TotalMouseClickCount,
@@ -297,18 +297,19 @@ namespace Xiuxian.Scripts.Services
                 ["total_joypad_button"] = TotalJoypadButtonCount,
                 ["total_joypad_axis"] = TotalJoypadAxisInputCount,
                 ["ap_accumulator"] = ApAccumulator
-            };
+            });
         }
 
         public void FromDictionary(Godot.Collections.Dictionary<string, Variant> data)
         {
-            TotalKeyDownCount = data.ContainsKey("total_key_down") ? data["total_key_down"].AsInt64() : 0L;
-            TotalMouseClickCount = data.ContainsKey("total_mouse_click") ? data["total_mouse_click"].AsInt64() : 0L;
-            TotalMouseScrollSteps = data.ContainsKey("total_scroll_steps") ? data["total_scroll_steps"].AsInt64() : 0L;
-            TotalMouseMoveDistancePx = data.ContainsKey("total_move_distance") ? data["total_move_distance"].AsDouble() : 0.0;
-            TotalJoypadButtonCount = data.ContainsKey("total_joypad_button") ? data["total_joypad_button"].AsInt64() : 0L;
-            TotalJoypadAxisInputCount = data.ContainsKey("total_joypad_axis") ? data["total_joypad_axis"].AsInt64() : 0L;
-            ApAccumulator = data.ContainsKey("ap_accumulator") ? data["ap_accumulator"].AsDouble() : 0.0;
+            var normalized = StateSerializationContracts.NormalizeInputActivity(data);
+            TotalKeyDownCount = normalized["total_key_down"].AsInt64();
+            TotalMouseClickCount = normalized["total_mouse_click"].AsInt64();
+            TotalMouseScrollSteps = normalized["total_scroll_steps"].AsInt64();
+            TotalMouseMoveDistancePx = normalized["total_move_distance"].AsDouble();
+            TotalJoypadButtonCount = normalized["total_joypad_button"].AsInt64();
+            TotalJoypadAxisInputCount = normalized["total_joypad_axis"].AsInt64();
+            ApAccumulator = normalized["ap_accumulator"].AsDouble();
         }
 
         public void ResetCurrentTick()

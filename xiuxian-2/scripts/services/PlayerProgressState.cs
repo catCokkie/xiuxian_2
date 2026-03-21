@@ -103,19 +103,20 @@ namespace Xiuxian.Scripts.Services
 
         public Godot.Collections.Dictionary<string, Variant> ToDictionary()
         {
-            return new Godot.Collections.Dictionary<string, Variant>
+            return StateSerializationContracts.NormalizePlayerProgress(new Godot.Collections.Dictionary<string, Variant>
             {
                 ["realm_level"] = RealmLevel,
                 ["realm_exp"] = RealmExp,
                 ["pet_mood"] = PetMood
-            };
+            });
         }
 
         public void FromDictionary(Godot.Collections.Dictionary<string, Variant> data)
         {
-            RealmLevel = data.ContainsKey("realm_level") ? Math.Max(1, data["realm_level"].AsInt32()) : 1;
-            RealmExp = data.ContainsKey("realm_exp") ? Math.Max(0.0, data["realm_exp"].AsDouble()) : 0.0;
-            PetMood = data.ContainsKey("pet_mood") ? Math.Clamp(data["pet_mood"].AsInt32(), 0, 100) : 60;
+            var normalized = StateSerializationContracts.NormalizePlayerProgress(data);
+            RealmLevel = normalized["realm_level"].AsInt32();
+            RealmExp = normalized["realm_exp"].AsDouble();
+            PetMood = normalized["pet_mood"].AsInt32();
             EmitSignal(SignalName.RealmProgressChanged, RealmLevel, RealmExp, RealmExpRequired);
         }
     }

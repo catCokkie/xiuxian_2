@@ -49,19 +49,20 @@ namespace Xiuxian.Scripts.Services
 
         public Godot.Collections.Dictionary<string, Variant> ToDictionary()
         {
-            return new Godot.Collections.Dictionary<string, Variant>
+            return StateSerializationContracts.NormalizeResourceWallet(new Godot.Collections.Dictionary<string, Variant>
             {
                 ["lingqi"] = Lingqi,
                 ["insight"] = Insight,
                 ["pet_affinity"] = PetAffinity
-            };
+            });
         }
 
         public void FromDictionary(Godot.Collections.Dictionary<string, Variant> data)
         {
-            Lingqi = data.ContainsKey("lingqi") ? data["lingqi"].AsDouble() : 0.0;
-            Insight = data.ContainsKey("insight") ? data["insight"].AsDouble() : 0.0;
-            PetAffinity = data.ContainsKey("pet_affinity") ? data["pet_affinity"].AsDouble() : 0.0;
+            var normalized = StateSerializationContracts.NormalizeResourceWallet(data);
+            Lingqi = normalized["lingqi"].AsDouble();
+            Insight = normalized["insight"].AsDouble();
+            PetAffinity = normalized["pet_affinity"].AsDouble();
             EmitSignal(SignalName.WalletChanged, Lingqi, Insight, PetAffinity);
         }
     }

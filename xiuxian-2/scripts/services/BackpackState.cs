@@ -36,15 +36,16 @@ namespace Xiuxian.Scripts.Services
 
         public Godot.Collections.Dictionary<string, Variant> ToDictionary()
         {
-            return new Godot.Collections.Dictionary<string, Variant>(_items);
+            return StateSerializationContracts.NormalizeBackpack(new Godot.Collections.Dictionary<string, Variant>(_items));
         }
 
         public void FromDictionary(Godot.Collections.Dictionary<string, Variant> data)
         {
             _items.Clear();
-            foreach (string key in data.Keys)
+            var normalized = StateSerializationContracts.NormalizeBackpack(data);
+            foreach (string key in normalized.Keys)
             {
-                _items[key] = data[key].AsInt32();
+                _items[key] = normalized[key].AsInt32();
             }
         }
     }
