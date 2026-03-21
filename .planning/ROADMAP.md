@@ -49,8 +49,8 @@ Plans:
 
 Plans:
 - [x] `02-01-PLAN.md` - Freeze representative `LevelConfigLoader` parse and validation contracts with fixture-backed regression tests
-- [ ] `02-02-PLAN.md` - Freeze service and level runtime serialization payloads used by unified saves
-- [ ] `02-03-PLAN.md` - Extract and verify the unified save snapshot contract plus curated legacy compatibility
+- [x] `02-02-PLAN.md` - Freeze service and level runtime serialization payloads used by unified saves
+- [x] `02-03-PLAN.md` - Extract and verify the unified save snapshot contract plus curated legacy compatibility
 
 ### Phase 3: Service Characterization for Safe Extraction
 **Goal**: Large runtime services have behavior-frozen characterization coverage that makes safe extraction and restructuring possible.
