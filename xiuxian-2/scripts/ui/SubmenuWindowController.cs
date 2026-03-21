@@ -4,6 +4,8 @@ public partial class SubmenuWindowController : Control
 {
     [Signal]
     public delegate void VisibilityChangedEventHandler(bool isVisible);
+    [Signal]
+    public delegate void LayoutChangedEventHandler(float x, float y);
 
     [Export] public Vector2 DefaultPosition = new(320, 120);
     [Export] public float OpenDuration = 0.22f;
@@ -33,6 +35,10 @@ public partial class SubmenuWindowController : Control
             }
             else
             {
+                if (_isDragging)
+                {
+                    EmitSignal(SignalName.LayoutChanged, Position.X, Position.Y);
+                }
                 _isDragging = false;
             }
 
@@ -52,6 +58,17 @@ public partial class SubmenuWindowController : Control
         Position = new Vector2(
             Mathf.Clamp(target.X, 0.0f, maxX),
             Mathf.Clamp(target.Y, 0.0f, maxY)
+        );
+    }
+
+    public void ApplySavedLayout(float x, float y)
+    {
+        Vector2 viewportSize = GetViewportRect().Size;
+        float maxX = Mathf.Max(0.0f, viewportSize.X - Size.X);
+        float maxY = Mathf.Max(0.0f, viewportSize.Y - Size.Y);
+        Position = new Vector2(
+            Mathf.Clamp(x, 0.0f, maxX),
+            Mathf.Clamp(y, 0.0f, maxY)
         );
     }
 
