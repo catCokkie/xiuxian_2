@@ -79,7 +79,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Test Harness and Deterministic Seams | 5/5 | Ready for verification | - |
-| 2. Config and Serialization Contracts | 1/3 | In Progress | - |
+| 1. Test Harness and Deterministic Seams | 5/5 | Complete | 2026-03-21 |
+| 2. Config and Serialization Contracts | 3/3 | Ready for verification | - |
 | 3. Service Characterization for Safe Extraction | 0/TBD | Not started | - |
 | 4. Runtime Smoke and Contract Validation | 0/TBD | Not started | - |
