@@ -136,6 +136,48 @@ public static class StateSerializationFixtureBuilder
         };
     }
 
+    public static Dictionary<string, object?> CreateInputActivityLegacyPayload()
+    {
+        return new Dictionary<string, object?>
+        {
+            ["total_key_down"] = 4L,
+            ["total_mouse_click"] = 2L,
+            ["total_scroll_steps"] = 1L,
+            ["total_move_distance"] = 144.0,
+            ["total_joypad_button"] = 0L,
+            ["total_joypad_axis"] = 0L,
+            ["ap_accumulator"] = 6.25
+        };
+    }
+
+    public static Dictionary<string, object?> CreateBackpackLegacyPayload()
+    {
+        return new Dictionary<string, object?>
+        {
+            ["spirit_stone"] = 5
+        };
+    }
+
+    public static Dictionary<string, object?> CreateResourceWalletLegacyPayload()
+    {
+        return new Dictionary<string, object?>
+        {
+            ["lingqi"] = 18.0,
+            ["insight"] = 3.0,
+            ["pet_affinity"] = 1.5
+        };
+    }
+
+    public static Dictionary<string, object?> CreatePlayerProgressLegacyPayload()
+    {
+        return new Dictionary<string, object?>
+        {
+            ["realm_level"] = 1,
+            ["realm_exp"] = 6.0,
+            ["pet_mood"] = 70
+        };
+    }
+
     public static Dictionary<string, object?> CreatePlayerActionMalformedPayload()
     {
         return new Dictionary<string, object?>
@@ -145,6 +187,14 @@ public static class StateSerializationFixtureBuilder
     }
 
     public static Dictionary<string, object?> CreatePlayerActionMalformedExpectation()
+    {
+        return new Dictionary<string, object?>
+        {
+            ["mode_id"] = "dungeon"
+        };
+    }
+
+    public static Dictionary<string, object?> CreatePlayerActionLegacyPayload()
     {
         return new Dictionary<string, object?>
         {
