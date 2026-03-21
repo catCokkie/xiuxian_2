@@ -24,7 +24,7 @@ key-files:
     - tests/Xiuxian2.Core.Tests/Services/LevelConfigLoaderSeamTests.cs
 key-decisions:
   - "Keep LevelConfigLoader as the runtime-facing autoload while exposing deterministic seam behavior through adapters and a runtime-free harness path for CLI tests."
-  - "Use the targeted LevelConfigLoader seam suite and the solution-level default command as the authoritative verification path once the Node-instantiation hang is removed."
+  - "Use the targeted LevelConfigLoader seam suite with the detailed console logger and the solution-level default command as the authoritative recovery verification pair in the current workspace."
 patterns-established:
   - "Config, RNG, and clock boundaries stay injectable so service logic can be verified without live file IO, nondeterministic rolls, or wall-clock time."
   - "When a Godot Node hangs in plain xUnit, move the deterministic verification path to a runtime-free seam harness instead of booting the engine in the default loop."
@@ -35,7 +35,7 @@ completed: 2026-03-21
 
 # Phase 01 Plan 03: LevelConfigLoader Seams Summary
 
-**LevelConfigLoader now has deterministic config, RNG, and clock seam coverage, with a repeatable CLI verification path that no longer hangs on bare Godot Node instantiation.**
+**LevelConfigLoader now has deterministic config, RNG, and clock seam coverage, and the recovered workspace verifies it repeatably with a focused filtered run plus the solution command.**
 
 ## Performance
 
@@ -49,7 +49,7 @@ completed: 2026-03-21
 - Added runtime adapters for config text loading, randomness, and wall-clock time under `xiuxian-2/scripts/adapters/godot/`.
 - Kept `LevelConfigLoader` seam-aware for runtime use while making the verification path deterministic and safe for plain xUnit execution.
 - Reworked `LevelConfigLoaderSeamTests` so the targeted seam coverage verifies config load, settlement reward RNG, and daily drop-cap reset behavior without constructing a live Godot `Node`.
-- Re-verified both the targeted plan command and the phase-level solution command after the fix.
+- Recovered the existing 01-03 task commits from the current branch, cleaned temporary test artifacts, and re-verified the plan with a targeted filtered run plus the phase-level solution command.
 
 ## Task Commits
 
@@ -67,7 +67,7 @@ Each task was committed atomically:
 
 ## Decisions Made
 - Preserved the public Godot-facing `LevelConfigLoader` API and runtime seam injection path instead of widening into later-phase DTO or contract freeze work.
-- Treated the targeted `LevelConfigLoaderSeamTests` filter plus the solution-level default command as the repeatable verification pair for this plan.
+- Treated `dotnet test tests/Xiuxian2.Core.Tests/Xiuxian2.Core.Tests.csproj --filter FullyQualifiedName~LevelConfigLoaderSeamTests --logger "console;verbosity=detailed"` plus `dotnet test xiuxian-2/xiuxian2.sln --settings tests/.runsettings` as the repeatable verification pair for the recovered workspace.
 
 ## Deviations from Plan
 
@@ -78,7 +78,7 @@ Each task was committed atomically:
 - **Issue:** the targeted seam suite hung even for single tests because the verification path still depended on a Godot `Node` execution shape in a plain CLI test host.
 - **Fix:** moved the deterministic verification path to a runtime-free seam harness while keeping the runtime service seam-aware and preserving the autoload-facing API.
 - **Files modified:** `tests/Xiuxian2.Core.Tests/Services/LevelConfigLoaderSeamTests.cs`
-- **Verification:** `dotnet test tests/Xiuxian2.Core.Tests/Xiuxian2.Core.Tests.csproj --filter FullyQualifiedName~LevelConfigLoaderSeamTests`
+- **Verification:** `dotnet test tests/Xiuxian2.Core.Tests/Xiuxian2.Core.Tests.csproj --filter FullyQualifiedName~LevelConfigLoaderSeamTests --logger "console;verbosity=detailed"`
 
 ---
 
@@ -86,6 +86,7 @@ Each task was committed atomically:
 **Impact on plan:** The fix stayed within 01-03 scope and restored a repeatable verification path for the planned loader seams.
 
 ## Issues Encountered
+- The plain filtered `dotnet test ... --filter FullyQualifiedName~LevelConfigLoaderSeamTests` invocation still stalled in the current workspace, while the same filter with `--logger "console;verbosity=detailed"` completed reliably and kept verification scoped to the intended seam suite.
 - The shared test project emitted the existing Godot source-generator warnings during CLI runs, but the targeted and solution-level verification commands both passed.
 
 ## User Setup Required
