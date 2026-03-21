@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 - [x] `01-01-PLAN.md` - Scaffold the default xUnit-based CLI test harness and document the single test command
 - [x] `01-02-PLAN.md` - Define deterministic seam contracts plus reusable fakes, builders, and frozen fixtures
-- [ ] `01-03-PLAN.md` - Refactor `LevelConfigLoader` behind config, RNG, and clock seams with TDD coverage
+- [x] `01-03-PLAN.md` - Refactor `LevelConfigLoader` behind config, RNG, and clock seams with TDD coverage
 - [x] `01-04-PLAN.md` - Refactor `CloudSaveSyncService` behind a filesystem seam with TDD coverage
 - [x] `01-05-PLAN.md` - Refactor `InputHookService` behind platform and hook seams with TDD coverage
 
@@ -74,7 +74,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Test Harness and Deterministic Seams | 4/5 | In Progress | - |
+| 1. Test Harness and Deterministic Seams | 5/5 | Ready for verification | - |
 | 2. Config and Serialization Contracts | 0/TBD | Not started | - |
 | 3. Service Characterization for Safe Extraction | 0/TBD | Not started | - |
 | 4. Runtime Smoke and Contract Validation | 0/TBD | Not started | - |

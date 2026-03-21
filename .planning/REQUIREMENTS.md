@@ -9,15 +9,15 @@ Requirements for the current brownfield testing milestone. Each requirement shou
 
 ### Test Foundation
 
-- [ ] **TEST-01**: Developer can run one repeatable CLI test command for the repository
-- [ ] **TEST-02**: Repository contains a reusable automated test project structure with shared fixtures, builders, and helpers
+- [x] **TEST-01**: Developer can run one repeatable CLI test command for the repository
+- [x] **TEST-02**: Repository contains a reusable automated test project structure with shared fixtures, builders, and helpers
 
 ### Service Contracts
 
 - [ ] **TEST-03**: Config parsing and validation behavior is covered by automated regression tests
 - [ ] **TEST-04**: Save/load round-trip behavior is covered by automated serialization tests
 - [ ] **TEST-05**: Large service behavior can be frozen with characterization tests before refactors begin
-- [ ] **TEST-06**: Core services can depend on deterministic seams for RNG, clock, filesystem, and platform/runtime boundaries
+- [x] **TEST-06**: Core services can depend on deterministic seams for RNG, clock, filesystem, and platform/runtime boundaries
 
 ### Runtime Smoke
 
@@ -41,12 +41,12 @@ Requirements for the current brownfield testing milestone. Each requirement shou
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TEST-01 | Phase 1 | Pending |
-| TEST-02 | Phase 1 | Pending |
+| TEST-01 | Phase 1 | Complete |
+| TEST-02 | Phase 1 | Complete |
 | TEST-03 | Phase 2 | Pending |
 | TEST-04 | Phase 2 | Pending |
 | TEST-05 | Phase 3 | Pending |
-| TEST-06 | Phase 1 | Pending |
+| TEST-06 | Phase 1 | Complete |
 | TEST-07 | Phase 4 | Pending |
 | TEST-08 | Phase 4 | Pending |
 

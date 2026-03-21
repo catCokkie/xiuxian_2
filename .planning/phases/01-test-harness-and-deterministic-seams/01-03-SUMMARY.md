@@ -56,7 +56,7 @@ completed: 2026-03-21
 Each task was committed atomically:
 
 1. **task 1: write failing tests for deterministic loader seams** - `a1a755b` (`test`)
-2. **task 2: refactor LevelConfigLoader behind config, rng, and clock seams** - `TBD feat commit`
+2. **task 2: refactor LevelConfigLoader behind config, rng, and clock seams** - `6e812d2` (`feat`)
 
 ## Files Created/Modified
 - `xiuxian-2/scripts/services/LevelConfigLoader.cs` - retains runtime seam injection and exposes the seam-aware loader path used by this milestone.
