@@ -12,60 +12,45 @@ public sealed class PrototypeRootSaveContractTests
     public void WriteSnapshotEmitsFrozenSchemaFiveSaveLayout()
     {
         var snapshot = CreateCurrentSnapshot();
-        var config = new Godot.ConfigFile();
 
-        PrototypeRootSaveContract.Write(config, snapshot, 1712345678);
+        string serialized = PrototypeRootSaveContract.Serialize(snapshot, 1712345678);
 
-        Assert.Equal(5, config.GetValue("meta", "version", 0).AsInt32());
-        Assert.True(config.HasSection("ui"));
-        Assert.True(config.HasSectionKey("ui", "submenu_active_left_tab"));
-        Assert.True(config.HasSectionKey("ui", "submenu_active_right_tab"));
-        Assert.True(config.HasSectionKey("input", "stats"));
-        Assert.True(config.HasSectionKey("backpack", "items"));
-        Assert.True(config.HasSectionKey("resource", "wallet"));
-        Assert.True(config.HasSectionKey("progress", "player"));
-        Assert.True(config.HasSectionKey("action", "mode"));
-        Assert.True(config.HasSectionKey("explore", "runtime"));
-        Assert.True(config.HasSectionKey("level", "runtime"));
-        Assert.True(config.HasSectionKey("settings", "system"));
+        Assert.Contains("[meta]", serialized);
+        Assert.Contains("version=5", serialized);
+        Assert.Contains("[ui]", serialized);
+        Assert.Contains("submenu_active_left_tab=\"StatsTab\"", serialized);
+        Assert.Contains("submenu_active_right_tab=\"SettingsTab\"", serialized);
+        Assert.Contains("[input]", serialized);
+        Assert.Contains("stats={", serialized);
+        Assert.Contains("[backpack]", serialized);
+        Assert.Contains("[resource]", serialized);
+        Assert.Contains("[progress]", serialized);
+        Assert.Contains("[action]", serialized);
+        Assert.Contains("[explore]", serialized);
+        Assert.Contains("[level]", serialized);
+        Assert.Contains("[settings]", serialized);
 
-        string fixturePath = GetFixturePath("phase2-save-v5.cfg");
-        string actualPath = Path.Combine(Path.GetTempPath(), $"prototype-root-save-{Guid.NewGuid():N}.cfg");
-
-        try
-        {
-            Assert.Equal(Godot.Error.Ok, config.Save(actualPath));
-            AssertFixtureMatchesConfig(fixturePath, actualPath);
-        }
-        finally
-        {
-            if (File.Exists(actualPath))
-            {
-                File.Delete(actualPath);
-            }
-        }
+        AssertFixtureMatchesSerializedOutput(GetFixturePath("phase2-save-v5.cfg"), serialized);
     }
 
     [Fact]
     public void ReadSnapshotMigratesLegacyUiTabAndDefaultsMissingRuntimeSections()
     {
-        var config = new Godot.ConfigFile();
-        Assert.Equal(Godot.Error.Ok, config.Load(GetFixturePath("phase2-legacy-save-v1.cfg")));
-
-        PrototypeRootSaveSnapshot snapshot = PrototypeRootSaveContract.Read(config);
+        PrototypeRootSaveSnapshot snapshot = PrototypeRootSaveContract.Deserialize(File.ReadAllText(GetFixturePath("phase2-legacy-save-v1.cfg")));
 
         Assert.Equal(1, snapshot.SchemaVersion);
         Assert.Equal("StatsTab", snapshot.Ui.ActiveLeftTab);
         Assert.Equal("OnlineTab", snapshot.Ui.ActiveRightTab);
         Assert.True(snapshot.Ui.SubmenuVisible);
-        Assert.Equal(StateSerializationFixtureBuilder.CreateInputActivityLegacyPayload(), snapshot.InputStats);
-        Assert.Equal(StateSerializationFixtureBuilder.CreateBackpackLegacyPayload(), snapshot.BackpackItems);
-        Assert.Equal(StateSerializationFixtureBuilder.CreateResourceWalletLegacyPayload(), snapshot.ResourceWallet);
-        Assert.Equal(StateSerializationFixtureBuilder.CreatePlayerProgressLegacyPayload(), snapshot.PlayerProgress);
-        Assert.Equal(StateSerializationFixtureBuilder.CreatePlayerActionLegacyPayload(), snapshot.ActionMode);
-        Assert.Equal(CreateExpectedDefaultLevelRuntime(), snapshot.LevelRuntime);
-        Assert.Equal(CreateExpectedDefaultExploreRuntime(), snapshot.ExploreRuntime);
-        Assert.Equal(CreateExpectedDefaultSystemSettings(), snapshot.SystemSettings);
+        Assert.True(snapshot.HookPaused);
+        Assert.Equal(CreateExpectedLegacyInputStats(), snapshot.InputStats);
+        Assert.Equal(CreateExpectedLegacyBackpackItems(), snapshot.BackpackItems);
+        Assert.Equal(CreateExpectedLegacyResourceWallet(), snapshot.ResourceWallet);
+        Assert.Equal(CreateExpectedLegacyPlayerProgress(), snapshot.PlayerProgress);
+        Assert.Equal(CreateExpectedLegacyActionMode(), snapshot.ActionMode);
+        Assert.Equal(CreateExpectedMissingOptionalSection(), snapshot.LevelRuntime);
+        Assert.Equal(CreateExpectedMissingOptionalSection(), snapshot.ExploreRuntime);
+        Assert.Equal(CreateExpectedMissingOptionalSection(), snapshot.SystemSettings);
     }
 
     [Fact]
@@ -180,49 +165,59 @@ public sealed class PrototypeRootSaveContractTests
         };
     }
 
-    private static Dictionary<string, object?> CreateExpectedDefaultLevelRuntime()
+    private static Dictionary<string, object?> CreateExpectedLegacyInputStats()
     {
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            ["active_level_id"] = string.Empty,
-            ["active_wave_index"] = 0,
-            ["unlocked_level_ids"] = new List<object?>(),
-            ["boss_cleared_level_ids"] = new List<object?>(),
-            ["level_clear_count_by_id"] = new Dictionary<string, object?>(StringComparer.Ordinal),
-            ["pity_counter_by_key"] = new Dictionary<string, object?>(StringComparer.Ordinal),
-            ["daily_roll_count_by_table"] = new Dictionary<string, object?>(StringComparer.Ordinal),
-            ["daily_roll_day_by_table"] = new Dictionary<string, object?>(StringComparer.Ordinal),
-            ["hourly_roll_count_by_table"] = new Dictionary<string, object?>(StringComparer.Ordinal),
-            ["hourly_roll_hour_by_table"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+            ["total_key_down"] = 4L,
+            ["total_mouse_click"] = 2L,
+            ["total_scroll_steps"] = 1L,
+            ["total_move_distance"] = 144.0,
+            ["total_joypad_button"] = 0L,
+            ["total_joypad_axis"] = 0L,
+            ["ap_accumulator"] = 6.25
         };
     }
 
-    private static Dictionary<string, object?> CreateExpectedDefaultExploreRuntime()
+    private static Dictionary<string, object?> CreateExpectedLegacyBackpackItems()
     {
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            ["zone_id"] = string.Empty,
-            ["zone_name"] = string.Empty,
-            ["explore_progress"] = 0.0,
-            ["battle_state"] = "exploring",
-            ["move_frame_counter"] = 0,
-            ["queue_move_input_pending"] = 0,
-            ["player_hp"] = 0,
-            ["player_max_hp"] = 1,
-            ["enemy_hp"] = 0,
-            ["enemy_max_hp"] = 1,
-            ["enemy_attack_power"] = 1,
-            ["inputs_per_battle_round_runtime"] = 1,
-            ["player_attack_per_round_runtime"] = 1,
-            ["enemy_damage_divider_runtime"] = 1,
-            ["enemy_min_damage_runtime"] = 1,
-            ["battle_round_counter"] = 0,
-            ["pending_battle_input_events"] = 0,
-            ["battle_monster_index"] = -1,
-            ["battle_monster_id"] = string.Empty,
-            ["battle_monster_name"] = string.Empty,
-            ["monster_marker_states"] = new List<object?>()
+            ["spirit_stone"] = 5
         };
+    }
+
+    private static Dictionary<string, object?> CreateExpectedLegacyResourceWallet()
+    {
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["lingqi"] = 18.0,
+            ["insight"] = 3.0,
+            ["pet_affinity"] = 1.5
+        };
+    }
+
+    private static Dictionary<string, object?> CreateExpectedLegacyPlayerProgress()
+    {
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["realm_level"] = 1,
+            ["realm_exp"] = 6.0,
+            ["pet_mood"] = 70
+        };
+    }
+
+    private static Dictionary<string, object?> CreateExpectedLegacyActionMode()
+    {
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["mode_id"] = "dungeon"
+        };
+    }
+
+    private static Dictionary<string, object?> CreateExpectedMissingOptionalSection()
+    {
+        return new Dictionary<string, object?>(StringComparer.Ordinal);
     }
 
     private static Dictionary<string, object?> CreateExpectedDefaultSystemSettings()
@@ -273,61 +268,22 @@ public sealed class PrototypeRootSaveContractTests
         throw new DirectoryNotFoundException("Could not locate the repository root from the test output directory.");
     }
 
-    private static void AssertFixtureMatchesConfig(string expectedPath, string actualPath)
+    private static void AssertFixtureMatchesSerializedOutput(string expectedPath, string actual)
     {
-        var expected = new Godot.ConfigFile();
-        var actual = new Godot.ConfigFile();
+        PrototypeRootSaveSnapshot expectedSnapshot = PrototypeRootSaveContract.Deserialize(File.ReadAllText(expectedPath));
+        PrototypeRootSaveSnapshot actualSnapshot = PrototypeRootSaveContract.Deserialize(actual);
 
-        Assert.Equal(Godot.Error.Ok, expected.Load(expectedPath));
-        Assert.Equal(Godot.Error.Ok, actual.Load(actualPath));
-
-        AssertConfigEqual(expected, actual);
-    }
-
-    private static void AssertConfigEqual(Godot.ConfigFile expected, Godot.ConfigFile actual)
-    {
-        Assert.Equal(expected.GetSections(), actual.GetSections());
-
-        foreach (string section in expected.GetSections())
-        {
-            Assert.Equal(expected.GetSectionKeys(section), actual.GetSectionKeys(section));
-
-            foreach (string key in expected.GetSectionKeys(section))
-            {
-                AssertVariantEqual(expected.GetValue(section, key), actual.GetValue(section, key));
-            }
-        }
-    }
-
-    private static void AssertVariantEqual(Godot.Variant expected, Godot.Variant actual)
-    {
-        Assert.Equal(expected.VariantType, actual.VariantType);
-
-        switch (expected.VariantType)
-        {
-            case Godot.Variant.Type.Dictionary:
-                AssertRawValueEqual(
-                    Xiuxian.Scripts.Services.RawVariantBridge.ToRawDictionary((Godot.Collections.Dictionary<string, Godot.Variant>)expected),
-                    Xiuxian.Scripts.Services.RawVariantBridge.ToRawDictionary((Godot.Collections.Dictionary<string, Godot.Variant>)actual));
-                break;
-            case Godot.Variant.Type.Array:
-                AssertRawValueEqual(
-                    Xiuxian.Scripts.Services.RawVariantBridge.ToRawDictionary(new Godot.Collections.Dictionary<string, Godot.Variant> { ["value"] = expected })["value"],
-                    Xiuxian.Scripts.Services.RawVariantBridge.ToRawDictionary(new Godot.Collections.Dictionary<string, Godot.Variant> { ["value"] = actual })["value"]);
-                break;
-            case Godot.Variant.Type.Float:
-                Assert.Equal(expected.AsDouble(), actual.AsDouble(), 6);
-                break;
-            case Godot.Variant.Type.Int:
-                Assert.Equal(expected.AsInt64(), actual.AsInt64());
-                break;
-            case Godot.Variant.Type.Bool:
-                Assert.Equal(expected.AsBool(), actual.AsBool());
-                break;
-            default:
-                Assert.Equal(expected.ToString(), actual.ToString());
-                break;
-        }
+        Assert.Equal(expectedSnapshot.SchemaVersion, actualSnapshot.SchemaVersion);
+        Assert.Equal(expectedSnapshot.Ui, actualSnapshot.Ui);
+        Assert.Equal(expectedSnapshot.HookPaused, actualSnapshot.HookPaused);
+        AssertRawValueEqual(expectedSnapshot.InputStats, actualSnapshot.InputStats);
+        AssertRawValueEqual(expectedSnapshot.BackpackItems, actualSnapshot.BackpackItems);
+        AssertRawValueEqual(expectedSnapshot.ResourceWallet, actualSnapshot.ResourceWallet);
+        AssertRawValueEqual(expectedSnapshot.PlayerProgress, actualSnapshot.PlayerProgress);
+        AssertRawValueEqual(expectedSnapshot.ActionMode, actualSnapshot.ActionMode);
+        AssertRawValueEqual(expectedSnapshot.ExploreRuntime, actualSnapshot.ExploreRuntime);
+        AssertRawValueEqual(expectedSnapshot.LevelRuntime, actualSnapshot.LevelRuntime);
+        AssertRawValueEqual(expectedSnapshot.SystemSettings, actualSnapshot.SystemSettings);
     }
 
     private static void AssertRawValueEqual(object? expected, object? actual)
