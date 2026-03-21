@@ -1,3 +1,5 @@
+using Xiuxian2.Core.Tests.Builders;
+
 namespace Xiuxian2.Core.Tests.Support.Deterministic;
 
 public sealed class FixtureSupportTests
