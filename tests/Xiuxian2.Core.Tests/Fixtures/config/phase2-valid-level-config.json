@@ -1,0 +1,46 @@
+{
+  "levels": [
+    {
+      "level_id": "starter_plain",
+      "level_name": "Starter Plain",
+      "realm_recommend": "Qi Condensation",
+      "spawn_table": [
+        {
+          "monster_id": "green_slime",
+          "weight": 100
+        }
+      ]
+    }
+  ],
+  "monsters": [
+    {
+      "monster_id": "green_slime",
+      "monster_name": "Green Slime",
+      "drops": {
+        "drop_table_id": "starter_plain_green_slime",
+        "drop_roll_count": 1
+      },
+      "settlement_reward": {
+        "lingqi_min": 5,
+        "lingqi_max": 9,
+        "insight_min": 1,
+        "insight_max": 3
+      }
+    }
+  ],
+  "drop_tables": [
+    {
+      "drop_table_id": "starter_plain_green_slime",
+      "bind_level_id": "starter_plain",
+      "bind_monster_ids": ["green_slime"],
+      "entries": [
+        {
+          "item_id": "spirit_stone",
+          "weight": 100,
+          "min_qty": 1,
+          "max_qty": 2
+        }
+      ]
+    }
+  ]
+}

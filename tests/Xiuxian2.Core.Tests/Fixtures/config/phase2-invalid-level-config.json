@@ -1,0 +1,42 @@
+{
+  "levels": [
+    {
+      "level_id": "misty_bog",
+      "level_name": "Misty Bog",
+      "spawn_table": [
+        {
+          "monster_id": "ghost_slug",
+          "weight": 60
+        },
+        {
+          "monster_id": "bog_rat",
+          "weight": 30
+        }
+      ]
+    }
+  ],
+  "monsters": [
+    {
+      "monster_id": "bog_rat",
+      "monster_name": "Bog Rat",
+      "drops": {
+        "drop_table_id": "missing_table"
+      }
+    }
+  ],
+  "drop_tables": [
+    {
+      "drop_table_id": "bog_table",
+      "bind_level_id": "missing_level",
+      "bind_monster_ids": ["", "ghost_slug"],
+      "entries": [
+        {
+          "item_id": "",
+          "weight": 0,
+          "qty_min": 3,
+          "qty_max": 1
+        }
+      ]
+    }
+  ]
+}
