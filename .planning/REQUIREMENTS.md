@@ -14,7 +14,7 @@ Requirements for the current brownfield testing milestone. Each requirement shou
 
 ### Service Contracts
 
-- [ ] **TEST-03**: Config parsing and validation behavior is covered by automated regression tests
+- [x] **TEST-03**: Config parsing and validation behavior is covered by automated regression tests
 - [ ] **TEST-04**: Save/load round-trip behavior is covered by automated serialization tests
 - [ ] **TEST-05**: Large service behavior can be frozen with characterization tests before refactors begin
 - [x] **TEST-06**: Core services can depend on deterministic seams for RNG, clock, filesystem, and platform/runtime boundaries
@@ -43,7 +43,7 @@ Requirements for the current brownfield testing milestone. Each requirement shou
 |-------------|-------|--------|
 | TEST-01 | Phase 1 | Complete |
 | TEST-02 | Phase 1 | Complete |
-| TEST-03 | Phase 2 | Pending |
+| TEST-03 | Phase 2 | Complete |
 | TEST-04 | Phase 2 | Pending |
 | TEST-05 | Phase 3 | Pending |
 | TEST-06 | Phase 1 | Complete |

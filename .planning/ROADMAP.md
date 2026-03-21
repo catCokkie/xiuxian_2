@@ -45,7 +45,12 @@ Plans:
   1. Representative config inputs produce repeatable parsed and validated outputs under automated regression tests.
   2. Save data can complete automated round-trip serialization tests without losing required progression state.
   3. Contract-breaking changes to config parsing or save payload shape fail tests before runtime regressions reach manual QA.
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [x] `02-01-PLAN.md` - Freeze representative `LevelConfigLoader` parse and validation contracts with fixture-backed regression tests
+- [ ] `02-02-PLAN.md` - Freeze service and level runtime serialization payloads used by unified saves
+- [ ] `02-03-PLAN.md` - Extract and verify the unified save snapshot contract plus curated legacy compatibility
 
 ### Phase 3: Service Characterization for Safe Extraction
 **Goal**: Large runtime services have behavior-frozen characterization coverage that makes safe extraction and restructuring possible.
@@ -75,6 +80,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Test Harness and Deterministic Seams | 5/5 | Ready for verification | - |
-| 2. Config and Serialization Contracts | 0/TBD | Not started | - |
+| 2. Config and Serialization Contracts | 1/3 | In Progress | - |
 | 3. Service Characterization for Safe Extraction | 0/TBD | Not started | - |
 | 4. Runtime Smoke and Contract Validation | 0/TBD | Not started | - |
