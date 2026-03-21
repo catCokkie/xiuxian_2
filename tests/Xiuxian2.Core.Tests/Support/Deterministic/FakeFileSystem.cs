@@ -7,6 +7,14 @@ public sealed class FakeFileSystem : IFileSystem
     private readonly Dictionary<string, byte[]> _files = new(StringComparer.Ordinal);
     private readonly string _root;
 
+    public int ReadAllBytesCallCount { get; private set; }
+
+    public int WriteAllBytesCallCount { get; private set; }
+
+    public string? LastReadPath { get; private set; }
+
+    public string? LastWrittenPath { get; private set; }
+
     public FakeFileSystem(string root = "/virtual")
     {
         _root = root.TrimEnd('/');
@@ -35,6 +43,9 @@ public sealed class FakeFileSystem : IFileSystem
 
     public byte[] ReadAllBytes(string path)
     {
+        ReadAllBytesCallCount++;
+        LastReadPath = path;
+
         if (!_files.TryGetValue(path, out var data))
         {
             throw new FileNotFoundException($"No scripted file exists at '{path}'.", path);
@@ -45,6 +56,8 @@ public sealed class FakeFileSystem : IFileSystem
 
     public void WriteAllBytes(string path, byte[] data)
     {
+        WriteAllBytesCallCount++;
+        LastWrittenPath = path;
         _files[path] = data.ToArray();
     }
 }
