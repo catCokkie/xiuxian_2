@@ -1,5 +1,6 @@
-﻿using Godot;
+using Godot;
 using System;
+using System.Collections.Generic;
 using Xiuxian.Scripts.Services;
 
 namespace Xiuxian.Scripts.Game
@@ -12,7 +13,6 @@ namespace Xiuxian.Scripts.Game
         private const string UnifiedStatePath = "user://save_state.cfg";
         private const string LegacyUiStatePath = "user://ui_state.cfg";
         private const string LegacyGameStatePath = "user://game_state.cfg";
-        private const int SaveSchemaVersion = 5;
         private const double SaveIntervalSeconds = 0.5;
         private const double DefaultActivitySaveMarkIntervalSeconds = 10.0;
 
@@ -194,19 +194,7 @@ namespace Xiuxian.Scripts.Game
         private void SaveAllState()
         {
             ConfigFile config = new();
-
-            config.SetValue("meta", "version", SaveSchemaVersion);
-            config.SetValue("meta", "last_saved_unix", Time.GetUnixTimeFromSystem());
-
-            WriteUiState(config);
-            WriteInputState(config);
-            WriteBackpackState(config);
-            WriteResourceState(config);
-            WritePlayerProgressState(config);
-            WriteActionModeState(config);
-            WriteExploreRuntimeState(config);
-            WriteLevelRuntimeState(config);
-            WriteSystemSettings(config);
+            PrototypeRootSaveContract.Write(config, CreateSaveSnapshot(), (long)Time.GetUnixTimeFromSystem());
 
             Error err = config.Save(UnifiedStatePath);
             if (err != Error.Ok)
@@ -226,31 +214,14 @@ namespace Xiuxian.Scripts.Game
                 return false;
             }
 
-            int version = config.GetValue("meta", "version", 1).AsInt32();
-            ReadUiState(config, version);
-            ReadInputState(config);
-            ReadBackpackState(config);
-            ReadResourceState(config);
-            ReadPlayerProgressState(config);
-            ReadActionModeState(config);
-            ReadLevelRuntimeState(config);
-            ReadExploreRuntimeState(config);
-            ReadSystemSettings(config);
+            ApplySaveSnapshot(PrototypeRootSaveContract.Read(config));
 
             if (_cloudSyncEnabled && _cloudSaveSyncService != null && _cloudSaveSyncService.TryDownloadToLocal(true))
             {
                 ConfigFile refreshed = new();
                 if (refreshed.Load(UnifiedStatePath) == Error.Ok)
                 {
-                    ReadUiState(refreshed, version);
-                    ReadInputState(refreshed);
-                    ReadBackpackState(refreshed);
-                    ReadResourceState(refreshed);
-                    ReadPlayerProgressState(refreshed);
-                    ReadActionModeState(refreshed);
-                    ReadLevelRuntimeState(refreshed);
-                    ReadExploreRuntimeState(refreshed);
-                    ReadSystemSettings(refreshed);
+                    ApplySaveSnapshot(PrototypeRootSaveContract.Read(refreshed));
                 }
             }
 
@@ -262,241 +233,95 @@ namespace Xiuxian.Scripts.Game
             ConfigFile uiConfig = new();
             if (uiConfig.Load(LegacyUiStatePath) == Error.Ok)
             {
-                ReadUiState(uiConfig, 1);
+                ApplyLegacyUiSnapshot(PrototypeRootSaveContract.Read(uiConfig).Ui);
             }
 
             ConfigFile gameConfig = new();
             if (gameConfig.Load(LegacyGameStatePath) == Error.Ok)
             {
-                ReadInputState(gameConfig);
+                PrototypeRootSaveSnapshot snapshot = PrototypeRootSaveContract.Read(gameConfig);
+                _activityState?.FromDictionary(RawVariantBridge.ToVariantDictionary(snapshot.InputStats));
+                if (snapshot.HookPaused)
+                {
+                    GD.PushWarning("PrototypeRootController: saved hook_paused=true detected, auto-resuming input capture.");
+                }
+
+                _hookService?.SetPaused(false);
             }
         }
 
-        private void ReadUiState(ConfigFile config, int version)
+        private PrototypeRootSaveSnapshot CreateSaveSnapshot()
         {
-            float mainBarX = config.GetValue("ui", "main_bar_x", _mainBar.Position.X).AsSingle();
-            float mainBarWidth = config.GetValue("ui", "main_bar_width", _mainBar.Size.X).AsSingle();
-            _mainBar.ApplyLayout(mainBarX, mainBarWidth);
-
-            string activeLeftTab = config.GetValue("ui", "submenu_active_left_tab", "CultivationTab").AsString();
-            string activeRightTab = config.GetValue("ui", "submenu_active_right_tab", "OnlineTab").AsString();
-
-            if (version < 2 || !config.HasSectionKey("ui", "submenu_active_left_tab"))
+            return new PrototypeRootSaveSnapshot
             {
-                // Legacy single-tab key: migrate into left-page tab selection.
-                activeLeftTab = config.GetValue("ui", "submenu_active_tab", "CultivationTab").AsString();
-            }
-
-            _bookTabs.RestoreActiveTabs(activeLeftTab, activeRightTab);
-
-            bool submenuVisible = config.GetValue("ui", "submenu_visible", false).AsBool();
-            _submenu.SetVisibleImmediate(submenuVisible);
+                Ui = new PrototypeRootUiSnapshot(
+                    _mainBar.Position.X,
+                    _mainBar.Size.X,
+                    _submenu.Visible,
+                    _bookTabs.ActiveLeftTabName,
+                    _bookTabs.ActiveRightTabName),
+                InputStats = ReadRawDictionary(_activityState?.ToDictionary()),
+                HookPaused = _hookService?.IsPaused ?? false,
+                BackpackItems = ReadRawDictionary(_backpackState?.ToDictionary()),
+                ResourceWallet = ReadRawDictionary(_resourceWalletState?.ToDictionary()),
+                PlayerProgress = ReadRawDictionary(_playerProgressState?.ToDictionary()),
+                ActionMode = ReadRawDictionary(_playerActionState?.ToDictionary()),
+                ExploreRuntime = ReadRawDictionary(_exploreProgressController?.ToRuntimeDictionary()),
+                LevelRuntime = ReadRawDictionary(_levelConfigLoader?.ToRuntimeDictionary()),
+                SystemSettings = ReadRawDictionary(_bookTabs.ToSystemSettingsDictionary())
+            };
         }
 
-        private void WriteUiState(ConfigFile config)
+        private void ApplySaveSnapshot(PrototypeRootSaveSnapshot snapshot)
         {
-            config.SetValue("ui", "main_bar_x", _mainBar.Position.X);
-            config.SetValue("ui", "main_bar_width", _mainBar.Size.X);
-            config.SetValue("ui", "submenu_visible", _submenu.Visible);
-            config.SetValue("ui", "submenu_active_left_tab", _bookTabs.ActiveLeftTabName);
-            config.SetValue("ui", "submenu_active_right_tab", _bookTabs.ActiveRightTabName);
-        }
+            _mainBar.ApplyLayout(snapshot.Ui.MainBarX, snapshot.Ui.MainBarWidth);
+            _bookTabs.RestoreActiveTabs(snapshot.Ui.ActiveLeftTab, snapshot.Ui.ActiveRightTab);
+            _submenu.SetVisibleImmediate(snapshot.Ui.SubmenuVisible);
 
-        private void ReadInputState(ConfigFile config)
-        {
-            if (_activityState == null)
-            {
-                return;
-            }
-
-            Variant inputData = config.GetValue("input", "stats", new Godot.Collections.Dictionary<string, Variant>());
-            if (inputData.VariantType == Variant.Type.Dictionary)
-            {
-                _activityState.FromDictionary((Godot.Collections.Dictionary<string, Variant>)inputData);
-            }
-
-            bool hookPaused = config.GetValue("input", "hook_paused", false).AsBool();
-            if (hookPaused)
+            _activityState?.FromDictionary(RawVariantBridge.ToVariantDictionary(snapshot.InputStats));
+            if (snapshot.HookPaused)
             {
                 GD.PushWarning("PrototypeRootController: saved hook_paused=true detected, auto-resuming input capture.");
             }
+
             _hookService?.SetPaused(false);
-        }
+            _backpackState?.FromDictionary(RawVariantBridge.ToVariantDictionary(snapshot.BackpackItems));
+            _resourceWalletState?.FromDictionary(RawVariantBridge.ToVariantDictionary(snapshot.ResourceWallet));
+            _playerProgressState?.FromDictionary(RawVariantBridge.ToVariantDictionary(snapshot.PlayerProgress));
+            _playerActionState?.FromDictionary(RawVariantBridge.ToVariantDictionary(snapshot.ActionMode));
 
-        private void WriteInputState(ConfigFile config)
-        {
-            if (_activityState == null)
+            if (snapshot.LevelRuntime.Count > 0)
             {
-                return;
+                _levelConfigLoader?.FromRuntimeDictionary(RawVariantBridge.ToVariantDictionary(snapshot.LevelRuntime));
             }
 
-            config.SetValue("input", "stats", _activityState.ToDictionary());
-            config.SetValue("input", "hook_paused", _hookService?.IsPaused ?? false);
-        }
-
-        private void ReadBackpackState(ConfigFile config)
-        {
-            if (_backpackState == null)
+            if (snapshot.ExploreRuntime.Count > 0)
             {
-                return;
+                _exploreProgressController?.FromRuntimeDictionary(RawVariantBridge.ToVariantDictionary(snapshot.ExploreRuntime));
             }
 
-            Variant backpackData = config.GetValue("backpack", "items", new Godot.Collections.Dictionary<string, Variant>());
-            if (backpackData.VariantType == Variant.Type.Dictionary)
+            if (snapshot.SystemSettings.Count > 0)
             {
-                _backpackState.FromDictionary((Godot.Collections.Dictionary<string, Variant>)backpackData);
-            }
-        }
-
-        private void WriteBackpackState(ConfigFile config)
-        {
-            if (_backpackState == null)
-            {
-                return;
-            }
-
-            config.SetValue("backpack", "items", _backpackState.ToDictionary());
-        }
-
-        private void ReadResourceState(ConfigFile config)
-        {
-            if (_resourceWalletState == null)
-            {
-                return;
-            }
-
-            Variant walletData = config.GetValue("resource", "wallet", new Godot.Collections.Dictionary<string, Variant>());
-            if (walletData.VariantType == Variant.Type.Dictionary)
-            {
-                _resourceWalletState.FromDictionary((Godot.Collections.Dictionary<string, Variant>)walletData);
-            }
-        }
-
-        private void WriteResourceState(ConfigFile config)
-        {
-            if (_resourceWalletState == null)
-            {
-                return;
-            }
-
-            config.SetValue("resource", "wallet", _resourceWalletState.ToDictionary());
-        }
-
-        private void ReadPlayerProgressState(ConfigFile config)
-        {
-            if (_playerProgressState == null)
-            {
-                return;
-            }
-
-            Variant progressData = config.GetValue("progress", "player", new Godot.Collections.Dictionary<string, Variant>());
-            if (progressData.VariantType == Variant.Type.Dictionary)
-            {
-                _playerProgressState.FromDictionary((Godot.Collections.Dictionary<string, Variant>)progressData);
-            }
-        }
-
-        private void WritePlayerProgressState(ConfigFile config)
-        {
-            if (_playerProgressState == null)
-            {
-                return;
-            }
-
-            config.SetValue("progress", "player", _playerProgressState.ToDictionary());
-        }
-
-        private void ReadActionModeState(ConfigFile config)
-        {
-            if (_playerActionState == null)
-            {
-                return;
-            }
-
-            Variant modeData = config.GetValue("action", "mode", new Godot.Collections.Dictionary<string, Variant>());
-            if (modeData.VariantType == Variant.Type.Dictionary)
-            {
-                _playerActionState.FromDictionary((Godot.Collections.Dictionary<string, Variant>)modeData);
-            }
-        }
-
-        private void WriteActionModeState(ConfigFile config)
-        {
-            if (_playerActionState == null)
-            {
-                return;
-            }
-
-            config.SetValue("action", "mode", _playerActionState.ToDictionary());
-        }
-
-        private void ReadExploreRuntimeState(ConfigFile config)
-        {
-            if (_exploreProgressController == null)
-            {
-                return;
-            }
-
-            Variant data = config.GetValue("explore", "runtime", new Godot.Collections.Dictionary<string, Variant>());
-            if (data.VariantType == Variant.Type.Dictionary)
-            {
-                _exploreProgressController.FromRuntimeDictionary((Godot.Collections.Dictionary<string, Variant>)data);
-            }
-        }
-
-        private void WriteExploreRuntimeState(ConfigFile config)
-        {
-            if (_exploreProgressController == null)
-            {
-                return;
-            }
-
-            config.SetValue("explore", "runtime", _exploreProgressController.ToRuntimeDictionary());
-        }
-
-        private void ReadLevelRuntimeState(ConfigFile config)
-        {
-            if (_levelConfigLoader == null)
-            {
-                return;
-            }
-
-            Variant data = config.GetValue("level", "runtime", new Godot.Collections.Dictionary<string, Variant>());
-            if (data.VariantType == Variant.Type.Dictionary)
-            {
-                _levelConfigLoader.FromRuntimeDictionary((Godot.Collections.Dictionary<string, Variant>)data);
-            }
-        }
-
-        private void WriteLevelRuntimeState(ConfigFile config)
-        {
-            if (_levelConfigLoader == null)
-            {
-                return;
-            }
-
-            config.SetValue("level", "runtime", _levelConfigLoader.ToRuntimeDictionary());
-        }
-
-        private void ReadSystemSettings(ConfigFile config)
-        {
-            Variant systemData = config.GetValue("settings", "system", new Godot.Collections.Dictionary<string, Variant>());
-            if (systemData.VariantType == Variant.Type.Dictionary)
-            {
-                var dict = (Godot.Collections.Dictionary<string, Variant>)systemData;
-                _bookTabs.FromSystemSettingsDictionary(dict);
+                _bookTabs.FromSystemSettingsDictionary(RawVariantBridge.ToVariantDictionary(snapshot.SystemSettings));
             }
 
             RefreshRuntimeSettingsFromBookTabs();
         }
 
-        private void WriteSystemSettings(ConfigFile config)
+        private void ApplyLegacyUiSnapshot(PrototypeRootUiSnapshot ui)
         {
-            var dict = _bookTabs.ToSystemSettingsDictionary();
-            config.SetValue("settings", "system", dict);
-            _cloudSyncEnabled = dict.ContainsKey("cloud_sync") && dict["cloud_sync"].AsBool();
-            _activitySaveMarkIntervalSeconds = ReadActivitySaveInterval(dict);
+            _mainBar.ApplyLayout(ui.MainBarX, ui.MainBarWidth);
+            _bookTabs.RestoreActiveTabs(ui.ActiveLeftTab, _bookTabs.ActiveRightTabName);
+            _submenu.SetVisibleImmediate(ui.SubmenuVisible);
         }
+
+        private static Dictionary<string, object?> ReadRawDictionary(Godot.Collections.Dictionary<string, Variant>? data)
+        {
+            return data == null
+                ? new Dictionary<string, object?>(StringComparer.Ordinal)
+                : RawVariantBridge.ToRawDictionary(data);
+        }
+
 
         private void RefreshRuntimeSettingsFromBookTabs()
         {
@@ -527,4 +352,3 @@ namespace Xiuxian.Scripts.Game
         }
     }
 }
-
