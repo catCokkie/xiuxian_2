@@ -28,7 +28,14 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. New service tests can reuse shared fixtures, builders, and helpers instead of creating ad hoc setup in each file.
   3. Core service tests can replace RNG, clock, filesystem, and platform/runtime boundaries with deterministic seams and assert stable outcomes.
   4. The default feedback loop stays focused on fast service-level tests rather than requiring a live Godot runtime.
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] `01-01-PLAN.md` - Scaffold the default xUnit-based CLI test harness and document the single test command
+- [ ] `01-02-PLAN.md` - Define deterministic seam contracts plus reusable fakes, builders, and frozen fixtures
+- [ ] `01-03-PLAN.md` - Refactor `LevelConfigLoader` behind config, RNG, and clock seams with TDD coverage
+- [ ] `01-04-PLAN.md` - Refactor `CloudSaveSyncService` behind a filesystem seam with TDD coverage
+- [ ] `01-05-PLAN.md` - Refactor `InputHookService` behind platform and hook seams with TDD coverage
 
 ### Phase 2: Config and Serialization Contracts
 **Goal**: The highest-risk data contracts are frozen so save/config refactors can happen without silent behavior drift.
@@ -67,7 +74,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Test Harness and Deterministic Seams | 0/TBD | Not started | - |
+| 1. Test Harness and Deterministic Seams | 0/5 | Not started | - |
 | 2. Config and Serialization Contracts | 0/TBD | Not started | - |
 | 3. Service Characterization for Safe Extraction | 0/TBD | Not started | - |
 | 4. Runtime Smoke and Contract Validation | 0/TBD | Not started | - |
