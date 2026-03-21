@@ -3,86 +3,150 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using Xiuxian.Scripts.Adapters.Godot;
+using Xiuxian.Scripts.Contracts;
+
+[assembly: InternalsVisibleTo("Xiuxian2.Core.Tests")]
 
 namespace Xiuxian.Scripts.Services
 {
+    internal interface ICloudSaveBridge
+    {
+        bool IsAvailable { get; }
+        bool WriteFile(string fileName, byte[] data);
+        bool TryReadFile(string fileName, out byte[] data);
+    }
+
     /// <summary>
     /// Cloud save bridge with Steam-first behavior.
     /// Uses reflection so project can run without direct Steamworks dependency.
     /// </summary>
     public partial class CloudSaveSyncService : Node
     {
-        [Export] public string LocalSavePath = "user://save_state.cfg";
-        [Export] public string CloudFileName = "save_state.cfg";
+        private readonly CloudSaveSyncRuntime _runtime;
 
-        private ISteamCloudBridge _bridge = new NoopSteamCloudBridge();
+        [Export]
+        public string LocalSavePath
+        {
+            get => _runtime.LocalSavePath;
+            set => _runtime.LocalSavePath = value;
+        }
+
+        [Export]
+        public string CloudFileName
+        {
+            get => _runtime.CloudFileName;
+            set => _runtime.CloudFileName = value;
+        }
+
+        public CloudSaveSyncService()
+            : this(new CloudSaveSyncRuntime(
+                new GodotFileSystem(),
+                static () => ReflectionSteamCloudBridge.TryCreate(),
+                GD.Print,
+                GD.PushWarning))
+        {
+        }
+
+        internal CloudSaveSyncService(IFileSystem fileSystem, ICloudSaveBridge bridge)
+            : this(new CloudSaveSyncRuntime(fileSystem, () => bridge, static _ => { }, static _ => { }))
+        {
+        }
+
+        private CloudSaveSyncService(CloudSaveSyncRuntime runtime)
+        {
+            _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
+        }
 
         public override void _Ready()
         {
-            ReflectionSteamCloudBridge steamBridge = ReflectionSteamCloudBridge.TryCreate();
-            if (steamBridge != null)
+            _runtime.InitializeBridge();
+        }
+
+        public bool TryDownloadToLocal(bool enabled) => _runtime.TryDownloadToLocal(enabled);
+
+        public bool TryUploadLocal(bool enabled) => _runtime.TryUploadLocal(enabled);
+
+        internal sealed class CloudSaveSyncRuntime
+        {
+            private readonly IFileSystem _fileSystem;
+            private readonly Func<ICloudSaveBridge?> _bridgeFactory;
+            private readonly Action<string> _logInfo;
+            private readonly Action<string> _logWarning;
+            private ICloudSaveBridge _bridge;
+
+            public CloudSaveSyncRuntime(
+                IFileSystem fileSystem,
+                Func<ICloudSaveBridge?> bridgeFactory,
+                Action<string> logInfo,
+                Action<string> logWarning)
             {
-                _bridge = steamBridge;
-            }
-            else
-            {
+                _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+                _bridgeFactory = bridgeFactory ?? throw new ArgumentNullException(nameof(bridgeFactory));
+                _logInfo = logInfo ?? throw new ArgumentNullException(nameof(logInfo));
+                _logWarning = logWarning ?? throw new ArgumentNullException(nameof(logWarning));
                 _bridge = new NoopSteamCloudBridge();
             }
-            GD.Print($"CloudSaveSyncService: Steam cloud available = {_bridge.IsAvailable}");
+
+            public string LocalSavePath { get; set; } = "user://save_state.cfg";
+
+            public string CloudFileName { get; set; } = "save_state.cfg";
+
+            public void InitializeBridge()
+            {
+                ICloudSaveBridge? steamBridge = _bridgeFactory();
+                _bridge = steamBridge ?? new NoopSteamCloudBridge();
+                _logInfo($"CloudSaveSyncService: Steam cloud available = {_bridge.IsAvailable}");
+            }
+
+            public bool TryDownloadToLocal(bool enabled)
+            {
+                if (!enabled || !_bridge.IsAvailable)
+                {
+                    return false;
+                }
+
+                if (!_bridge.TryReadFile(CloudFileName, out byte[] data))
+                {
+                    return false;
+                }
+
+                string path = _fileSystem.GlobalizePath(LocalSavePath);
+                _fileSystem.WriteAllBytes(path, data);
+                _logInfo("CloudSaveSyncService: downloaded cloud save to local.");
+                return true;
+            }
+
+            public bool TryUploadLocal(bool enabled)
+            {
+                if (!enabled || !_bridge.IsAvailable)
+                {
+                    return false;
+                }
+
+                string path = _fileSystem.GlobalizePath(LocalSavePath);
+                if (!_fileSystem.FileExists(path))
+                {
+                    return false;
+                }
+
+                byte[] data = _fileSystem.ReadAllBytes(path);
+                bool ok = _bridge.WriteFile(CloudFileName, data);
+                if (ok)
+                {
+                    _logInfo("CloudSaveSyncService: uploaded local save to cloud.");
+                }
+                else
+                {
+                    _logWarning("CloudSaveSyncService: failed to upload local save.");
+                }
+
+                return ok;
+            }
         }
 
-        public bool TryDownloadToLocal(bool enabled)
-        {
-            if (!enabled || !_bridge.IsAvailable)
-            {
-                return false;
-            }
-
-            if (!_bridge.TryReadFile(CloudFileName, out byte[] data))
-            {
-                return false;
-            }
-
-            string path = ProjectSettings.GlobalizePath(LocalSavePath);
-            File.WriteAllBytes(path, data);
-            GD.Print("CloudSaveSyncService: downloaded cloud save to local.");
-            return true;
-        }
-
-        public bool TryUploadLocal(bool enabled)
-        {
-            if (!enabled || !_bridge.IsAvailable)
-            {
-                return false;
-            }
-
-            string path = ProjectSettings.GlobalizePath(LocalSavePath);
-            if (!File.Exists(path))
-            {
-                return false;
-            }
-
-            byte[] data = File.ReadAllBytes(path);
-            bool ok = _bridge.WriteFile(CloudFileName, data);
-            if (ok)
-            {
-                GD.Print("CloudSaveSyncService: uploaded local save to cloud.");
-            }
-            else
-            {
-                GD.PushWarning("CloudSaveSyncService: failed to upload local save.");
-            }
-            return ok;
-        }
-
-        private interface ISteamCloudBridge
-        {
-            bool IsAvailable { get; }
-            bool WriteFile(string fileName, byte[] data);
-            bool TryReadFile(string fileName, out byte[] data);
-        }
-
-        private sealed class NoopSteamCloudBridge : ISteamCloudBridge
+        private sealed class NoopSteamCloudBridge : ICloudSaveBridge
         {
             public bool IsAvailable => false;
             public bool WriteFile(string fileName, byte[] data) => false;
@@ -93,7 +157,7 @@ namespace Xiuxian.Scripts.Services
             }
         }
 
-        private sealed class ReflectionSteamCloudBridge : ISteamCloudBridge
+        private sealed class ReflectionSteamCloudBridge : ICloudSaveBridge
         {
             private readonly Type _remoteStorageType;
             private readonly MethodInfo _fileWrite;

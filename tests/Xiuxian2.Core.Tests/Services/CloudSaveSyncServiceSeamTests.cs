@@ -12,21 +12,27 @@ public sealed class CloudSaveSyncServiceSeamTests
         var fixture = new ServiceFixtureBuilder().Build();
         var bridge = new FakeCloudSaveBridge()
             .AddCloudFile("save_state.cfg", new byte[] { 7, 8, 9 });
-        var service = new CloudSaveSyncService(fixture.FileSystem, bridge)
+        var runtime = new CloudSaveSyncService.CloudSaveSyncRuntime(
+            fixture.FileSystem,
+            () => bridge,
+            static _ => { },
+            static _ => { })
         {
             LocalSavePath = "user://cloud-save.cfg",
             CloudFileName = "save_state.cfg"
         };
 
-        var downloaded = service.TryDownloadToLocal(enabled: true);
+        runtime.InitializeBridge();
 
-        var expectedPath = fixture.FileSystem.GlobalizePath(service.LocalSavePath);
+        var downloaded = runtime.TryDownloadToLocal(enabled: true);
+
+        var expectedPath = fixture.FileSystem.GlobalizePath(runtime.LocalSavePath);
         Assert.True(downloaded);
         Assert.True(fixture.FileSystem.FileExists(expectedPath));
         Assert.Equal(expectedPath, fixture.FileSystem.LastWrittenPath);
         Assert.Equal(1, fixture.FileSystem.WriteAllBytesCallCount);
         Assert.Equal(new byte[] { 7, 8, 9 }, fixture.FileSystem.ReadAllBytes(expectedPath));
-        Assert.Equal(service.CloudFileName, bridge.LastReadFileName);
+        Assert.Equal(runtime.CloudFileName, bridge.LastReadFileName);
         Assert.Equal(1, bridge.TryReadFileCallCount);
     }
 
@@ -35,20 +41,26 @@ public sealed class CloudSaveSyncServiceSeamTests
     {
         var fixture = new ServiceFixtureBuilder().Build();
         var bridge = new FakeCloudSaveBridge();
-        var service = new CloudSaveSyncService(fixture.FileSystem, bridge)
+        var runtime = new CloudSaveSyncService.CloudSaveSyncRuntime(
+            fixture.FileSystem,
+            () => bridge,
+            static _ => { },
+            static _ => { })
         {
             LocalSavePath = "user://cloud-save.cfg",
             CloudFileName = "save_state.cfg"
         };
-        var expectedPath = fixture.FileSystem.GlobalizePath(service.LocalSavePath);
+        runtime.InitializeBridge();
+
+        var expectedPath = fixture.FileSystem.GlobalizePath(runtime.LocalSavePath);
         fixture.FileSystem.AddFile(expectedPath, new byte[] { 1, 2, 3, 4 });
 
-        var uploaded = service.TryUploadLocal(enabled: true);
+        var uploaded = runtime.TryUploadLocal(enabled: true);
 
         Assert.True(uploaded);
         Assert.Equal(expectedPath, fixture.FileSystem.LastReadPath);
         Assert.Equal(1, fixture.FileSystem.ReadAllBytesCallCount);
-        Assert.Equal(service.CloudFileName, bridge.LastWriteFileName);
+        Assert.Equal(runtime.CloudFileName, bridge.LastWriteFileName);
         Assert.Equal(new byte[] { 1, 2, 3, 4 }, bridge.LastWrittenData);
         Assert.Equal(1, bridge.WriteFileCallCount);
     }
@@ -60,16 +72,22 @@ public sealed class CloudSaveSyncServiceSeamTests
     {
         var fixture = new ServiceFixtureBuilder().Build();
         var bridge = new FakeCloudSaveBridge { IsAvailable = available };
-        var service = new CloudSaveSyncService(fixture.FileSystem, bridge)
+        var runtime = new CloudSaveSyncService.CloudSaveSyncRuntime(
+            fixture.FileSystem,
+            () => bridge,
+            static _ => { },
+            static _ => { })
         {
             LocalSavePath = "user://cloud-save.cfg",
             CloudFileName = "save_state.cfg"
         };
-        var expectedPath = fixture.FileSystem.GlobalizePath(service.LocalSavePath);
+        runtime.InitializeBridge();
+
+        var expectedPath = fixture.FileSystem.GlobalizePath(runtime.LocalSavePath);
         fixture.FileSystem.AddFile(expectedPath, new byte[] { 1, 2, 3, 4 });
 
-        var uploaded = service.TryUploadLocal(enabled);
-        var downloaded = service.TryDownloadToLocal(enabled);
+        var uploaded = runtime.TryUploadLocal(enabled);
+        var downloaded = runtime.TryDownloadToLocal(enabled);
 
         Assert.False(uploaded);
         Assert.False(downloaded);
