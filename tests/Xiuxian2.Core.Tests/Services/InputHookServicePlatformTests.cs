@@ -11,18 +11,15 @@ public sealed class InputHookServicePlatformTests
         var fixture = new ServiceFixtureBuilder().Build();
         fixture.PlatformInfo.SetPlatform("Linux");
         fixture.HookBackend.QueueStartSuccess();
-        var service = new InputHookService(fixture.PlatformInfo, fixture.HookBackend)
-        {
-            AutoStart = false,
-            EnableInAppFallback = true,
-            ForceGlobalCapture = false,
-        };
+        var outcome = InputHookService.EvaluateHookStartup(
+            fixture.PlatformInfo,
+            fixture.HookBackend,
+            static (_, _, _) => 0,
+            static (_, _, _) => 0);
 
-        service.StartHook();
-
-        Assert.False(service.IsHookActive);
-        Assert.True(service.IsUsingInAppFallback);
-        Assert.Equal("Linux", service.ActivePlatformName);
+        Assert.False(outcome.IsHookActive);
+        Assert.True(outcome.IsUsingInAppFallback);
+        Assert.Equal("Linux", outcome.PlatformName);
         Assert.Equal(0, fixture.HookBackend.StartCallCount);
     }
 
@@ -32,18 +29,15 @@ public sealed class InputHookServicePlatformTests
         var fixture = new ServiceFixtureBuilder().Build();
         fixture.PlatformInfo.SetPlatform("Windows");
         fixture.HookBackend.QueueStartFailure("Keyboard hook failed: 5");
-        var service = new InputHookService(fixture.PlatformInfo, fixture.HookBackend)
-        {
-            AutoStart = false,
-            EnableInAppFallback = true,
-            ForceGlobalCapture = false,
-        };
+        var outcome = InputHookService.EvaluateHookStartup(
+            fixture.PlatformInfo,
+            fixture.HookBackend,
+            static (_, _, _) => 0,
+            static (_, _, _) => 0);
 
-        service.StartHook();
-
-        Assert.False(service.IsHookActive);
-        Assert.True(service.IsUsingInAppFallback);
-        Assert.Equal("Keyboard hook failed: 5", service.LastHookErrorMessage);
+        Assert.False(outcome.IsHookActive);
+        Assert.True(outcome.IsUsingInAppFallback);
+        Assert.Equal("Keyboard hook failed: 5", outcome.ErrorMessage);
         Assert.Equal(1, fixture.HookBackend.StartCallCount);
     }
 
@@ -53,18 +47,15 @@ public sealed class InputHookServicePlatformTests
         var fixture = new ServiceFixtureBuilder().Build();
         fixture.PlatformInfo.SetPlatform("Windows");
         fixture.HookBackend.QueueStartSuccess();
-        var service = new InputHookService(fixture.PlatformInfo, fixture.HookBackend)
-        {
-            AutoStart = false,
-            EnableInAppFallback = true,
-            ForceGlobalCapture = true,
-        };
+        var outcome = InputHookService.EvaluateHookStartup(
+            fixture.PlatformInfo,
+            fixture.HookBackend,
+            static (_, _, _) => 0,
+            static (_, _, _) => 0);
 
-        service.StartHook();
-
-        Assert.True(service.IsHookActive);
-        Assert.False(service.IsUsingInAppFallback);
-        Assert.Null(service.LastHookErrorMessage);
+        Assert.True(outcome.IsHookActive);
+        Assert.False(outcome.IsUsingInAppFallback);
+        Assert.Null(outcome.ErrorMessage);
         Assert.Equal(1, fixture.HookBackend.StartCallCount);
     }
 }

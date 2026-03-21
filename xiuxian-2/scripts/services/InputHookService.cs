@@ -1,18 +1,17 @@
-﻿using Godot;
+using Godot;
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Xiuxian.Scripts.Adapters.Platform;
+using Xiuxian.Scripts.Contracts;
 
 namespace Xiuxian.Scripts.Services
 {
-    /// <summary>
-    /// Windows 全局输入钩子服务
-    /// 使用 SetWindowsHookEx 设置低级键盘和鼠标钩子
-    /// 仅采集事件计数，不记录具体键值
-    /// </summary>
     public partial class InputHookService : Node
     {
         [Signal]
         public delegate void HookStateChangedEventHandler(bool isActive);
+
         [Signal]
         public delegate void InputErrorEventHandler(string errorMessage);
 
@@ -25,38 +24,114 @@ namespace Xiuxian.Scripts.Services
         [Export] public float JoyAxisStep { get; set; } = 0.25f;
         [Export] public bool EnableJoyAxisCounting { get; set; } = false;
 
-        // 依赖：输入状态管理器
         [Export] public NodePath ActivityStatePath { get; set; } = "/root/InputActivityState";
 
-        private InputActivityState _activityState;
-        private bool _isHookActive = false;
+        private readonly IPlatformInfo _platformInfo;
+        private readonly IHookBackend _hookBackend;
+        private readonly HookCallback _keyboardProc;
+        private readonly HookCallback _mouseProc;
+        private readonly Dictionary<string, float> _joyAxisSample = new();
+
+        private InputActivityState? _activityState;
+        private bool _isHookActive;
         private double _retryCooldown;
-
-        // Win32 API 委托和句柄
-        private delegate IntPtr LowLevelProc(int nCode, IntPtr wParam, IntPtr lParam);
-        private LowLevelProc _keyboardProc;
-        private LowLevelProc _mouseProc;
-        private IntPtr _keyboardHookId = IntPtr.Zero;
-        private IntPtr _mouseHookId = IntPtr.Zero;
-
-        // 鼠标位置追踪（用于计算移动距离）
         private Vector2I _lastMousePosition;
-        private bool _hasLastMousePosition = false;
-        private bool _warnedUnsupportedPlatform = false;
-        private readonly System.Collections.Generic.Dictionary<string, float> _joyAxisSample = new();
+        private bool _hasLastMousePosition;
+        private bool _warnedUnsupportedPlatform;
+
+        public InputHookService()
+            : this(new GodotPlatformInfo(), new Win32HookBackend())
+        {
+        }
+
+        public InputHookService(IPlatformInfo platformInfo, IHookBackend hookBackend)
+        {
+            _platformInfo = platformInfo ?? throw new ArgumentNullException(nameof(platformInfo));
+            _hookBackend = hookBackend ?? throw new ArgumentNullException(nameof(hookBackend));
+            _keyboardProc = KeyboardHookCallback;
+            _mouseProc = MouseHookCallback;
+        }
+
+        public bool IsHookActive => _isHookActive;
+
+        public bool IsUsingInAppFallback => EnableInAppFallback && !_isHookActive;
+
+        public string ActivePlatformName => _platformInfo.PlatformName;
+
+        public string? LastHookErrorMessage { get; private set; }
+
+        public static HookStartupOutcome EvaluateHookStartup(
+            IPlatformInfo platformInfo,
+            IHookBackend hookBackend,
+            HookCallback keyboardCallback,
+            HookCallback mouseCallback)
+        {
+            if (platformInfo == null)
+            {
+                throw new ArgumentNullException(nameof(platformInfo));
+            }
+
+            if (hookBackend == null)
+            {
+                throw new ArgumentNullException(nameof(hookBackend));
+            }
+
+            if (!platformInfo.IsWindows())
+            {
+                return new HookStartupOutcome(
+                    platformInfo.PlatformName,
+                    AttemptedBackendStart: false,
+                    IsHookActive: false,
+                    ErrorMessage: $"InputHookService: Global hooks are disabled on platform '{platformInfo.PlatformName}'. Fallback to in-app input only.");
+            }
+
+            try
+            {
+                if (!hookBackend.TryStart(keyboardCallback, mouseCallback, out var errorMessage))
+                {
+                    return new HookStartupOutcome(
+                        platformInfo.PlatformName,
+                        AttemptedBackendStart: true,
+                        IsHookActive: false,
+                        ErrorMessage: string.IsNullOrWhiteSpace(errorMessage)
+                            ? "InputHookService: Hook backend failed to start."
+                            : errorMessage);
+                }
+
+                if (!hookBackend.IsActive)
+                {
+                    return new HookStartupOutcome(
+                        platformInfo.PlatformName,
+                        AttemptedBackendStart: true,
+                        IsHookActive: false,
+                        ErrorMessage: "InputHookService: Hook backend reported success but remained inactive.");
+                }
+
+                return new HookStartupOutcome(
+                    platformInfo.PlatformName,
+                    AttemptedBackendStart: true,
+                    IsHookActive: true,
+                    ErrorMessage: null);
+            }
+            catch (Exception ex)
+            {
+                return new HookStartupOutcome(
+                    platformInfo.PlatformName,
+                    AttemptedBackendStart: true,
+                    IsHookActive: false,
+                    ErrorMessage: ex.Message);
+            }
+        }
 
         public override void _Ready()
         {
-            _activityState = GetNode<InputActivityState>(ActivityStatePath);
+            _activityState = GetNodeOrNull<InputActivityState>(ActivityStatePath);
             if (_activityState == null)
             {
-                GD.PushError("InputHookService: InputActivityState not found!");
-                EmitSignal(SignalName.InputError, "InputActivityState not found");
+                ReportInputError("InputHookService: InputActivityState not found!", pushError: true);
                 return;
             }
 
-            _keyboardProc = KeyboardHookCallback;
-            _mouseProc = MouseHookCallback;
             ProcessMode = ProcessModeEnum.Always;
             SetProcessInput(true);
 
@@ -68,7 +143,7 @@ namespace Xiuxian.Scripts.Services
 
         public override void _Process(double delta)
         {
-            if (!ForceGlobalCapture || IsPaused || _isHookActive || !IsWindowsPlatform())
+            if (!ForceGlobalCapture || IsPaused || _isHookActive || !_platformInfo.IsWindows())
             {
                 return;
             }
@@ -95,8 +170,7 @@ namespace Xiuxian.Scripts.Services
                 return;
             }
 
-            // Global Win hooks only cover keyboard/mouse; joypad must still be counted in-app.
-            bool skipKeyboardMouseInApp = _isHookActive && IsWindowsPlatform();
+            bool skipKeyboardMouseInApp = _isHookActive && _platformInfo.IsWindows();
 
             switch (@event)
             {
@@ -143,14 +217,98 @@ namespace Xiuxian.Scripts.Services
             }
         }
 
+        public void StartHook()
+        {
+            if (_isHookActive)
+            {
+                return;
+            }
+
+            LastHookErrorMessage = null;
+
+            var startup = EvaluateHookStartup(_platformInfo, _hookBackend, _keyboardProc, _mouseProc);
+            LastHookErrorMessage = startup.ErrorMessage;
+
+            if (!_platformInfo.IsWindows())
+            {
+                if (!_warnedUnsupportedPlatform && LastHookErrorMessage is not null)
+                {
+                    _warnedUnsupportedPlatform = true;
+                    ReportInputError(LastHookErrorMessage, pushWarning: true);
+                }
+                return;
+            }
+
+            if (!startup.IsHookActive)
+            {
+                if (LastHookErrorMessage is not null)
+                {
+                    ReportInputError(LastHookErrorMessage, pushError: true);
+                }
+
+                if (startup.AttemptedBackendStart)
+                {
+                    _retryCooldown = Math.Max(0.2, GlobalHookRetryIntervalSeconds);
+                    if (ForceGlobalCapture)
+                    {
+                        ReportWarning("InputHookService: Global-only mode active, waiting for next hook retry.");
+                    }
+                    else
+                    {
+                        ReportWarning("InputHookService: Falling back to in-app input capture.");
+                    }
+                }
+                return;
+            }
+
+            _isHookActive = true;
+            _warnedUnsupportedPlatform = false;
+            _retryCooldown = 0.0;
+            EmitHookStateChanged(true);
+            ReportInfo("InputHookService: Global hooks started successfully");
+        }
+
+        public void StopHook()
+        {
+            if (!_isHookActive)
+            {
+                return;
+            }
+
+            _hookBackend.Stop();
+            _isHookActive = false;
+            _retryCooldown = Math.Max(0.2, GlobalHookRetryIntervalSeconds);
+            EmitHookStateChanged(false);
+            ReportInfo("InputHookService: Global hooks stopped");
+        }
+
+        public void SetPaused(bool paused)
+        {
+            IsPaused = paused;
+            if (paused)
+            {
+                _activityState?.ResetCurrentTick();
+            }
+            ReportInfo($"InputHookService: {(paused ? "Paused" : "Resumed")}");
+        }
+
+        public void TogglePause()
+        {
+            SetPaused(!IsPaused);
+        }
+
         private void HandleJoypadMotion(InputEventJoypadMotion joyMotion)
         {
+            if (_activityState == null)
+            {
+                return;
+            }
+
             float value = joyMotion.AxisValue;
             float absValue = Mathf.Abs(value);
             string key = $"{joyMotion.Device}:{(int)joyMotion.Axis}";
             float previous = _joyAxisSample.TryGetValue(key, out float prev) ? prev : 0.0f;
 
-            // Only count meaningful stick/trigger changes to avoid per-frame flooding.
             if (absValue < JoyAxisDeadzone)
             {
                 _joyAxisSample[key] = 0.0f;
@@ -168,165 +326,23 @@ namespace Xiuxian.Scripts.Services
             _joyAxisSample[key] = absValue;
         }
 
-        /// <summary>
-        /// 启动全局钩子
-        /// </summary>
-        public void StartHook()
-        {
-            if (_isHookActive)
-                return;
-
-            if (!IsWindowsPlatform())
-            {
-                if (!_warnedUnsupportedPlatform)
-                {
-                    _warnedUnsupportedPlatform = true;
-                    string message = $"InputHookService: Global hooks are disabled on platform '{OS.GetName()}'. Fallback to in-app input only.";
-                    GD.PushWarning(message);
-                    EmitSignal(SignalName.InputError, message);
-                }
-                return;
-            }
-
-            try
-            {
-                // For low-level global hooks, null module handle is valid when callback is in current process.
-                IntPtr hModule = IntPtr.Zero;
-
-                // 设置键盘钩子
-                _keyboardHookId = SetWindowsHookEx(WH_KEYBOARD_LL, _keyboardProc, hModule, 0);
-                if (_keyboardHookId == IntPtr.Zero)
-                {
-                    int error = Marshal.GetLastWin32Error();
-                    GD.PushError($"Failed to set keyboard hook. Error: {error}");
-                    EmitSignal(SignalName.InputError, $"Keyboard hook failed: {error}");
-                    _retryCooldown = Math.Max(0.2, GlobalHookRetryIntervalSeconds);
-                    if (ForceGlobalCapture)
-                    {
-                        GD.PushWarning("InputHookService: Global-only mode active, waiting for next hook retry.");
-                    }
-                    else
-                    {
-                        GD.PushWarning("InputHookService: Falling back to in-app input capture.");
-                    }
-                    return;
-                }
-
-                // 设置鼠标钩子
-                _mouseHookId = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, hModule, 0);
-                if (_mouseHookId == IntPtr.Zero)
-                {
-                    int error = Marshal.GetLastWin32Error();
-                    GD.PushError($"Failed to set mouse hook. Error: {error}");
-                    EmitSignal(SignalName.InputError, $"Mouse hook failed: {error}");
-                    UnhookWindowsHookEx(_keyboardHookId);
-                    _keyboardHookId = IntPtr.Zero;
-                    _retryCooldown = Math.Max(0.2, GlobalHookRetryIntervalSeconds);
-                    if (ForceGlobalCapture)
-                    {
-                        GD.PushWarning("InputHookService: Global-only mode active, waiting for next hook retry.");
-                    }
-                    else
-                    {
-                        GD.PushWarning("InputHookService: Falling back to in-app input capture.");
-                    }
-                    return;
-                }
-
-                _isHookActive = true;
-                _retryCooldown = 0.0;
-                EmitSignal(SignalName.HookStateChanged, true);
-                GD.Print("InputHookService: Global hooks started successfully");
-            }
-            catch (Exception ex)
-            {
-                GD.PushError($"InputHookService: Exception starting hooks: {ex.Message}");
-                EmitSignal(SignalName.InputError, ex.Message);
-                _retryCooldown = Math.Max(0.2, GlobalHookRetryIntervalSeconds);
-                if (ForceGlobalCapture)
-                {
-                    GD.PushWarning("InputHookService: Global-only mode active, waiting for next hook retry.");
-                }
-                else
-                {
-                    GD.PushWarning("InputHookService: Falling back to in-app input capture.");
-                }
-            }
-        }
-
-        /// <summary>
-        /// 停止全局钩子
-        /// </summary>
-        public void StopHook()
-        {
-            if (!_isHookActive)
-                return;
-
-            if (_keyboardHookId != IntPtr.Zero)
-            {
-                UnhookWindowsHookEx(_keyboardHookId);
-                _keyboardHookId = IntPtr.Zero;
-            }
-
-            if (_mouseHookId != IntPtr.Zero)
-            {
-                UnhookWindowsHookEx(_mouseHookId);
-                _mouseHookId = IntPtr.Zero;
-            }
-
-            _isHookActive = false;
-            _retryCooldown = Math.Max(0.2, GlobalHookRetryIntervalSeconds);
-            EmitSignal(SignalName.HookStateChanged, false);
-            GD.Print("InputHookService: Global hooks stopped");
-        }
-
-        /// <summary>
-        /// 暂停/恢复采集
-        /// </summary>
-        public void SetPaused(bool paused)
-        {
-            IsPaused = paused;
-            if (paused)
-            {
-                _activityState?.ResetCurrentTick();
-            }
-            GD.Print($"InputHookService: {(paused ? "Paused" : "Resumed")}");
-        }
-
-        /// <summary>
-        /// 切换暂停状态
-        /// </summary>
-        public void TogglePause()
-        {
-            SetPaused(!IsPaused);
-        }
-
-        /// <summary>
-        /// 键盘钩子回调
-        /// </summary>
-        private IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        private nint KeyboardHookCallback(int nCode, nint wParam, nint lParam)
         {
             if (nCode >= 0 && !IsPaused && _activityState != null)
             {
-                // wParam: WM_KEYDOWN = 256, WM_KEYUP = 257, WM_SYSKEYDOWN = 260, WM_SYSKEYUP = 261
-                if (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN)
+                if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)
                 {
-                    // 不记录具体键值 (lParam 包含虚拟键码，但我们不存储它)
                     _activityState.RegisterKeyDown();
                 }
             }
 
-            return CallNextHookEx(_keyboardHookId, nCode, wParam, lParam);
+            return _hookBackend.CallNextKeyboardHook(nCode, wParam, lParam);
         }
 
-        /// <summary>
-        /// 鼠标钩子回调
-        /// </summary>
-        private IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        private nint MouseHookCallback(int nCode, nint wParam, nint lParam)
         {
             if (nCode >= 0 && !IsPaused && _activityState != null)
             {
-                // 解析鼠标结构
                 var mouseInfo = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
                 var currentPos = new Vector2I(mouseInfo.pt.x, mouseInfo.pt.y);
 
@@ -340,7 +356,6 @@ namespace Xiuxian.Scripts.Services
                         break;
 
                     case WM_MOUSEWHEEL:
-                        // 获取滚轮增量 (高 16 位)
                         int delta = (short)((mouseInfo.mouseData >> 16) & 0xFFFF);
                         int steps = Math.Abs(delta) / WHEEL_DELTA;
                         if (steps > 0)
@@ -361,34 +376,70 @@ namespace Xiuxian.Scripts.Services
                 }
             }
 
-            return CallNextHookEx(_mouseHookId, nCode, wParam, lParam);
+            return _hookBackend.CallNextMouseHook(nCode, wParam, lParam);
         }
 
-        #region Win32 API
-
-        private static bool IsWindowsPlatform()
+        private void ReportInputError(string message, bool pushError = false, bool pushWarning = false)
         {
-            return OS.GetName() == "Windows";
+            if (!IsInsideTree())
+            {
+                return;
+            }
+
+            if (pushError)
+            {
+                GD.PushError(message);
+            }
+
+            if (pushWarning)
+            {
+                GD.PushWarning(message);
+            }
+
+            EmitSignal(SignalName.InputError, message);
         }
 
-        private const int WH_KEYBOARD_LL = 13;
-        private const int WH_MOUSE_LL = 14;
+        private void ReportWarning(string message)
+        {
+            if (IsInsideTree())
+            {
+                GD.PushWarning(message);
+            }
+        }
+
+        private void ReportInfo(string message)
+        {
+            if (IsInsideTree())
+            {
+                GD.Print(message);
+            }
+        }
+
+        private void EmitHookStateChanged(bool isActive)
+        {
+            if (IsInsideTree())
+            {
+                EmitSignal(SignalName.HookStateChanged, isActive);
+            }
+        }
+
+        public sealed record HookStartupOutcome(
+            string PlatformName,
+            bool AttemptedBackendStart,
+            bool IsHookActive,
+            string? ErrorMessage)
+        {
+            public bool IsUsingInAppFallback => !IsHookActive;
+        }
 
         private const int WM_KEYDOWN = 0x0100;
-        private const int WM_KEYUP = 0x0101;
         private const int WM_SYSKEYDOWN = 0x0104;
-        private const int WM_SYSKEYUP = 0x0105;
-
         private const int WM_LBUTTONDOWN = 0x0201;
-        private const int WM_LBUTTONUP = 0x0202;
         private const int WM_MOUSEMOVE = 0x0200;
         private const int WM_MOUSEWHEEL = 0x020A;
         private const int WM_RBUTTONDOWN = 0x0204;
-        private const int WM_RBUTTONUP = 0x0205;
         private const int WM_MBUTTONDOWN = 0x0207;
-        private const int WM_MBUTTONUP = 0x0208;
         private const int WM_XBUTTONDOWN = 0x020B;
-
         private const int WHEEL_DELTA = 120;
 
         [StructLayout(LayoutKind.Sequential)]
@@ -407,20 +458,5 @@ namespace Xiuxian.Scripts.Services
             public uint time;
             public IntPtr dwExtraInfo;
         }
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelProc lpfn, IntPtr hMod, uint dwThreadId);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Auto)]
-        private static extern IntPtr GetModuleHandle(string lpModuleName);
-
-        #endregion
     }
 }

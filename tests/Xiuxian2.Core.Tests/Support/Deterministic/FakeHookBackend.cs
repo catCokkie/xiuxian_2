@@ -12,6 +12,8 @@ public sealed class FakeHookBackend : IHookBackend
 
     public bool IsActive { get; private set; }
 
+    public int StartCallCount { get; private set; }
+
     public int StopCallCount { get; private set; }
 
     public FakeHookBackend QueueStartSuccess()
@@ -40,6 +42,7 @@ public sealed class FakeHookBackend : IHookBackend
 
     public bool TryStart(HookCallback keyboardCallback, HookCallback mouseCallback, out string errorMessage)
     {
+        StartCallCount++;
         _keyboardCallback = keyboardCallback;
         _mouseCallback = mouseCallback;
 
