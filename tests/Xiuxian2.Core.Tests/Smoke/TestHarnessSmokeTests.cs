@@ -5,7 +5,7 @@ public sealed class TestHarnessSmokeTests
     [Fact]
     public void StandardRunnerExecutesTrivialAssertion()
     {
-        Assert.True(false, "RED: prove the harness reports failures before implementation is finalized.");
+        Assert.Equal(4, 2 + 2);
     }
 
     [Fact]
@@ -20,7 +20,9 @@ public sealed class TestHarnessSmokeTests
     [Fact]
     public void DefaultSuiteRemainsGodotRuntimeFree()
     {
-        Assert.True(false, "RED: document the runtime-free contract with a dedicated passing implementation step.");
+        var processName = Process.GetCurrentProcess().ProcessName;
+
+        Assert.DoesNotContain("godot", processName, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ResolveRepositoryRoot()
