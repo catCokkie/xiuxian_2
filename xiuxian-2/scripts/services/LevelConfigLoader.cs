@@ -2,6 +2,10 @@ using Godot;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using Xiuxian.Scripts.Adapters.Godot;
+using Xiuxian.Scripts.Contracts;
+
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Xiuxian2.Core.Tests")]
 
 namespace Xiuxian.Scripts.Services
 {
@@ -42,7 +46,9 @@ namespace Xiuxian.Scripts.Services
         private readonly List<string> _activeLevelMonsterWave = new();
         private readonly Dictionary<string, int> _activeMoveInputsByCategory = new();
         private int _activeLevelWaveIndex;
-        private readonly RandomNumberGenerator _rng = new();
+        private IConfigSource _configSource = new GodotConfigSource();
+        private IRng _rng = new GodotRandomAdapter();
+        private IClock _clock = new SystemClock();
         private readonly List<string> _validationIssues = new();
         private readonly List<Godot.Collections.Dictionary<string, Variant>> _validationEntries = new();
         private string _lastDropTableResolved = "";
@@ -60,6 +66,13 @@ namespace Xiuxian.Scripts.Services
             LoadConfig();
         }
 
+        public void UseTestSeams(IConfigSource configSource, IRng rng, IClock clock)
+        {
+            _configSource = configSource ?? throw new ArgumentNullException(nameof(configSource));
+            _rng = rng ?? throw new ArgumentNullException(nameof(rng));
+            _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        }
+
         public bool LoadConfig()
         {
             _monsterById.Clear();
@@ -72,18 +85,16 @@ namespace Xiuxian.Scripts.Services
             _hourlyRollHourByTable.Clear();
             _bossClearedLevelIds.Clear();
 
-            using FileAccess? file = FileAccess.Open(ConfigPath, FileAccess.ModeFlags.Read);
-            if (file == null)
+            if (!_configSource.TryReadAllText(ConfigPath, out string text))
             {
-                GD.PushWarning($"LevelConfigLoader: failed to open config at {ConfigPath}");
+                PushWarningIfRuntimeReady($"LevelConfigLoader: failed to open config at {ConfigPath}");
                 return false;
             }
 
-            string text = file.GetAsText();
             Variant parsed = Json.ParseString(text);
             if (parsed.VariantType != Variant.Type.Dictionary)
             {
-                GD.PushWarning("LevelConfigLoader: config is not a valid dictionary JSON.");
+                PushWarningIfRuntimeReady("LevelConfigLoader: config is not a valid dictionary JSON.");
                 return false;
             }
 
@@ -94,8 +105,8 @@ namespace Xiuxian.Scripts.Services
             IndexDropTables();
             ValidateConfiguration();
 
-            EmitSignal(SignalName.ConfigLoaded, ActiveLevelId, ActiveLevelName);
-            GD.Print($"LevelConfigLoader: loaded level '{ActiveLevelId}' ({ActiveLevelName})");
+            EmitConfigLoadedIfRuntimeReady();
+            PrintIfRuntimeReady($"LevelConfigLoader: loaded level '{ActiveLevelId}' ({ActiveLevelName})");
             return true;
         }
 
@@ -108,7 +119,7 @@ namespace Xiuxian.Scripts.Services
 
             _activeLevelIndex = (_activeLevelIndex + 1) % _levels.Count;
             ApplyActiveLevelData();
-            EmitSignal(SignalName.ConfigLoaded, ActiveLevelId, ActiveLevelName);
+            EmitConfigLoadedIfRuntimeReady();
             return true;
         }
 
@@ -140,11 +151,41 @@ namespace Xiuxian.Scripts.Services
 
                 _activeLevelIndex = i;
                 ApplyActiveLevelData();
-                EmitSignal(SignalName.ConfigLoaded, ActiveLevelId, ActiveLevelName);
+                EmitConfigLoadedIfRuntimeReady();
                 return true;
             }
 
             return false;
+        }
+
+        private void EmitConfigLoadedIfRuntimeReady()
+        {
+            if (!IsInsideTree())
+            {
+                return;
+            }
+
+            EmitSignal(SignalName.ConfigLoaded, ActiveLevelId, ActiveLevelName);
+        }
+
+        private void PushWarningIfRuntimeReady(string message)
+        {
+            if (!IsInsideTree())
+            {
+                return;
+            }
+
+            GD.PushWarning(message);
+        }
+
+        private void PrintIfRuntimeReady(string message)
+        {
+            if (!IsInsideTree())
+            {
+                return;
+            }
+
+            GD.Print(message);
         }
 
         public bool TrySetActiveLevelIfUnlocked(string levelId)
@@ -166,6 +207,433 @@ namespace Xiuxian.Scripts.Services
             }
 
             return TrySetActiveLevel(next);
+        }
+
+        internal sealed class SeamRuntime
+        {
+            private readonly IConfigSource _configSource;
+            private readonly IRng _rng;
+            private readonly IClock _clock;
+            private Godot.Collections.Dictionary<string, Variant> _rootData = new();
+            private readonly List<Godot.Collections.Dictionary<string, Variant>> _levels = new();
+            private readonly Dictionary<string, Godot.Collections.Dictionary<string, Variant>> _monsterById = new();
+            private readonly Dictionary<string, Godot.Collections.Dictionary<string, Variant>> _dropTableById = new();
+            private readonly Dictionary<string, int> _pityCounterByKey = new();
+            private readonly Dictionary<string, int> _dailyRollCountByTable = new();
+            private readonly Dictionary<string, long> _dailyRollDayByTable = new();
+            private readonly Dictionary<string, int> _hourlyRollCountByTable = new();
+            private readonly Dictionary<string, long> _hourlyRollHourByTable = new();
+            private int _activeLevelIndex;
+
+            public SeamRuntime(IConfigSource configSource, IRng rng, IClock clock)
+            {
+                _configSource = configSource ?? throw new ArgumentNullException(nameof(configSource));
+                _rng = rng ?? throw new ArgumentNullException(nameof(rng));
+                _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+            }
+
+            public string ActiveLevelId { get; private set; } = "";
+
+            public string ActiveLevelName { get; private set; } = "Unknown Zone";
+
+            public bool LoadConfig(string configPath)
+            {
+                _monsterById.Clear();
+                _dropTableById.Clear();
+                _pityCounterByKey.Clear();
+                _dailyRollCountByTable.Clear();
+                _dailyRollDayByTable.Clear();
+                _hourlyRollCountByTable.Clear();
+                _hourlyRollHourByTable.Clear();
+
+                if (!_configSource.TryReadAllText(configPath, out string text))
+                {
+                    return false;
+                }
+
+                Variant parsed = Json.ParseString(text);
+                if (parsed.VariantType != Variant.Type.Dictionary)
+                {
+                    return false;
+                }
+
+                _rootData = (Godot.Collections.Dictionary<string, Variant>)parsed;
+                ParseLevelsSection();
+                IndexMonsters();
+                IndexDropTables();
+                return _levels.Count > 0;
+            }
+
+            public bool TryRollMonsterSettlementReward(string monsterId, out double lingqi, out double insight)
+            {
+                lingqi = 0.0;
+                insight = 0.0;
+
+                if (!TryGetMonster(monsterId, out var monster))
+                {
+                    return false;
+                }
+                if (!TryGetChildDictionary(monster, "settlement_reward", out var settlement))
+                {
+                    return false;
+                }
+
+                int lingqiMin = settlement.ContainsKey("lingqi_min") ? settlement["lingqi_min"].AsInt32() : 0;
+                int lingqiMax = settlement.ContainsKey("lingqi_max") ? settlement["lingqi_max"].AsInt32() : lingqiMin;
+                int insightMin = settlement.ContainsKey("insight_min") ? settlement["insight_min"].AsInt32() : 0;
+                int insightMax = settlement.ContainsKey("insight_max") ? settlement["insight_max"].AsInt32() : insightMin;
+
+                if (lingqiMax < lingqiMin)
+                {
+                    lingqiMax = lingqiMin;
+                }
+                if (insightMax < insightMin)
+                {
+                    insightMax = insightMin;
+                }
+
+                lingqi = _rng.NextInt(lingqiMin, lingqiMax);
+                insight = _rng.NextInt(insightMin, insightMax);
+                return true;
+            }
+
+            public Dictionary<string, int> RollMonsterDrops(string monsterId)
+            {
+                var result = new Dictionary<string, int>();
+                if (!TryGetMonster(monsterId, out var monster))
+                {
+                    return result;
+                }
+                if (!TryGetChildDictionary(monster, "drops", out var drops))
+                {
+                    return result;
+                }
+
+                string configuredDropTableId = GetString(drops, "drop_table_id", "");
+                string dropTableId = ResolveDropTableForActiveLevel(monsterId, configuredDropTableId);
+                int dropRollCount = Math.Max(0, drops.ContainsKey("drop_roll_count") ? drops["drop_roll_count"].AsInt32() : 1);
+                string pityCounterKey = "";
+                string pityItemId = "";
+                int pityThreshold = 0;
+                int pityQty = 0;
+
+                if (!string.IsNullOrEmpty(dropTableId) && dropRollCount > 0 && TryGetDropTable(dropTableId, out var table))
+                {
+                    ReadPityConfig(table, out pityCounterKey, out pityThreshold, out pityItemId, out pityQty);
+                    AddDropRollResults(table, dropTableId, dropRollCount, result);
+                }
+
+                ApplyPity(dropTableId, pityCounterKey, pityThreshold, pityItemId, pityQty, result);
+                return result;
+            }
+
+            private void ParseLevelsSection()
+            {
+                _levels.Clear();
+                _activeLevelIndex = 0;
+
+                if (!_rootData.ContainsKey("levels") || _rootData["levels"].VariantType != Variant.Type.Array)
+                {
+                    return;
+                }
+
+                var array = (Godot.Collections.Array<Variant>)_rootData["levels"];
+                foreach (Variant item in array)
+                {
+                    if (item.VariantType == Variant.Type.Dictionary)
+                    {
+                        _levels.Add((Godot.Collections.Dictionary<string, Variant>)item);
+                    }
+                }
+
+                ApplyActiveLevelData();
+            }
+
+            private void ApplyActiveLevelData()
+            {
+                if (_levels.Count == 0)
+                {
+                    ActiveLevelId = "";
+                    ActiveLevelName = "Unknown Zone";
+                    return;
+                }
+
+                _activeLevelIndex = Math.Clamp(_activeLevelIndex, 0, _levels.Count - 1);
+                var level = _levels[_activeLevelIndex];
+                ActiveLevelId = GetString(level, "level_id", "");
+                ActiveLevelName = GetString(level, "level_name", "Unknown Zone");
+            }
+
+            private void IndexMonsters()
+            {
+                _monsterById.Clear();
+                if (!_rootData.ContainsKey("monsters") || _rootData["monsters"].VariantType != Variant.Type.Array)
+                {
+                    return;
+                }
+
+                var array = (Godot.Collections.Array<Variant>)_rootData["monsters"];
+                foreach (Variant item in array)
+                {
+                    if (item.VariantType != Variant.Type.Dictionary)
+                    {
+                        continue;
+                    }
+
+                    var dict = (Godot.Collections.Dictionary<string, Variant>)item;
+                    string monsterId = GetString(dict, "monster_id", "");
+                    if (!string.IsNullOrEmpty(monsterId))
+                    {
+                        _monsterById[monsterId] = dict;
+                    }
+                }
+            }
+
+            private void IndexDropTables()
+            {
+                _dropTableById.Clear();
+                if (!_rootData.ContainsKey("drop_tables") || _rootData["drop_tables"].VariantType != Variant.Type.Array)
+                {
+                    return;
+                }
+
+                var array = (Godot.Collections.Array<Variant>)_rootData["drop_tables"];
+                foreach (Variant item in array)
+                {
+                    if (item.VariantType != Variant.Type.Dictionary)
+                    {
+                        continue;
+                    }
+
+                    var dict = (Godot.Collections.Dictionary<string, Variant>)item;
+                    string tableId = GetString(dict, "drop_table_id", "");
+                    if (!string.IsNullOrEmpty(tableId))
+                    {
+                        _dropTableById[tableId] = dict;
+                    }
+                }
+            }
+
+            private bool TryGetMonster(string monsterId, out Godot.Collections.Dictionary<string, Variant> monsterData)
+            {
+                if (_monsterById.TryGetValue(monsterId, out monsterData))
+                {
+                    return true;
+                }
+
+                monsterData = new Godot.Collections.Dictionary<string, Variant>();
+                return false;
+            }
+
+            private bool TryGetDropTable(string dropTableId, out Godot.Collections.Dictionary<string, Variant> dropTableData)
+            {
+                if (_dropTableById.TryGetValue(dropTableId, out dropTableData))
+                {
+                    return true;
+                }
+
+                dropTableData = new Godot.Collections.Dictionary<string, Variant>();
+                return false;
+            }
+
+            private void AddDropRollResults(
+                Godot.Collections.Dictionary<string, Variant> table,
+                string dropTableId,
+                int rollCount,
+                Dictionary<string, int> result)
+            {
+                if (!table.ContainsKey("entries") || table["entries"].VariantType != Variant.Type.Array)
+                {
+                    return;
+                }
+
+                var entries = (Godot.Collections.Array<Variant>)table["entries"];
+                for (int i = 0; i < rollCount; i++)
+                {
+                    if (!TryConsumeDropRoll(table, dropTableId, out int hourlyCountAfterConsume))
+                    {
+                        break;
+                    }
+
+                    if (ShouldSkipDropBySoftCap(table, hourlyCountAfterConsume))
+                    {
+                        continue;
+                    }
+
+                    Godot.Collections.Dictionary<string, Variant> picked = PickWeightedDropEntry(entries);
+                    if (picked.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    string itemId = GetString(picked, "item_id", "");
+                    int minQty = Math.Max(0, picked.ContainsKey("min_qty") ? picked["min_qty"].AsInt32() : 1);
+                    int maxQty = Math.Max(minQty, picked.ContainsKey("max_qty") ? picked["max_qty"].AsInt32() : minQty);
+                    int qty = _rng.NextInt(minQty, maxQty);
+                    AddDrop(result, itemId, qty);
+                }
+            }
+
+            private void ApplyPity(
+                string dropTableId,
+                string pityCounterKey,
+                int pityThreshold,
+                string pityItemId,
+                int pityQty,
+                Dictionary<string, int> result)
+            {
+                if (string.IsNullOrEmpty(dropTableId) || string.IsNullOrEmpty(pityCounterKey) || pityThreshold <= 0 || string.IsNullOrEmpty(pityItemId))
+                {
+                    return;
+                }
+
+                bool hasPityItem = result.ContainsKey(pityItemId) && result[pityItemId] > 0;
+                if (hasPityItem)
+                {
+                    _pityCounterByKey[pityCounterKey] = 0;
+                    return;
+                }
+
+                int next = (_pityCounterByKey.TryGetValue(pityCounterKey, out int current) ? current : 0) + 1;
+                if (next >= pityThreshold)
+                {
+                    AddDrop(result, pityItemId, Math.Max(1, pityQty));
+                    _pityCounterByKey[pityCounterKey] = 0;
+                    return;
+                }
+
+                _pityCounterByKey[pityCounterKey] = next;
+            }
+
+            private bool TryConsumeDropRoll(
+                Godot.Collections.Dictionary<string, Variant> table,
+                string dropTableId,
+                out int hourlyCountAfterConsume)
+            {
+                hourlyCountAfterConsume = 0;
+                long unix = _clock.GetUnixTimeSeconds();
+                long dayIndex = unix / 86400;
+                long hourIndex = unix / 3600;
+
+                int dailyCap = ReadDailyCap(table);
+                if (!_dailyRollDayByTable.TryGetValue(dropTableId, out long savedDay) || savedDay != dayIndex)
+                {
+                    _dailyRollDayByTable[dropTableId] = dayIndex;
+                    _dailyRollCountByTable[dropTableId] = 0;
+                }
+
+                int dailyCount = _dailyRollCountByTable.TryGetValue(dropTableId, out int d) ? d : 0;
+                if (dailyCap > 0 && dailyCount >= dailyCap)
+                {
+                    return false;
+                }
+
+                _dailyRollCountByTable[dropTableId] = dailyCount + 1;
+
+                if (!_hourlyRollHourByTable.TryGetValue(dropTableId, out long savedHour) || savedHour != hourIndex)
+                {
+                    _hourlyRollHourByTable[dropTableId] = hourIndex;
+                    _hourlyRollCountByTable[dropTableId] = 0;
+                }
+
+                int hourlyCount = _hourlyRollCountByTable.TryGetValue(dropTableId, out int h) ? h : 0;
+                hourlyCountAfterConsume = hourlyCount + 1;
+                _hourlyRollCountByTable[dropTableId] = hourlyCountAfterConsume;
+                return true;
+            }
+
+            private bool ShouldSkipDropBySoftCap(Godot.Collections.Dictionary<string, Variant> table, int hourlyCountAfterConsume)
+            {
+                int softCap = ReadHourlySoftCap(table);
+                if (softCap <= 0 || hourlyCountAfterConsume <= softCap)
+                {
+                    return false;
+                }
+
+                double decay = ReadRepeatDecay(table);
+                if (decay <= 0.0)
+                {
+                    return true;
+                }
+
+                int overflow = hourlyCountAfterConsume - softCap;
+                double allowChance = Math.Pow(Math.Min(1.0, decay), overflow);
+                return _rng.NextSingle() > allowChance;
+            }
+
+            private Godot.Collections.Dictionary<string, Variant> PickWeightedDropEntry(Godot.Collections.Array<Variant> entries)
+            {
+                int totalWeight = 0;
+                foreach (Variant item in entries)
+                {
+                    if (item.VariantType != Variant.Type.Dictionary)
+                    {
+                        continue;
+                    }
+
+                    var dict = (Godot.Collections.Dictionary<string, Variant>)item;
+                    totalWeight += Math.Max(0, dict.ContainsKey("weight") ? dict["weight"].AsInt32() : 0);
+                }
+
+                if (totalWeight <= 0)
+                {
+                    return new Godot.Collections.Dictionary<string, Variant>();
+                }
+
+                int roll = _rng.NextInt(1, totalWeight);
+                int acc = 0;
+                foreach (Variant item in entries)
+                {
+                    if (item.VariantType != Variant.Type.Dictionary)
+                    {
+                        continue;
+                    }
+
+                    var dict = (Godot.Collections.Dictionary<string, Variant>)item;
+                    int weight = Math.Max(0, dict.ContainsKey("weight") ? dict["weight"].AsInt32() : 0);
+                    if (weight <= 0)
+                    {
+                        continue;
+                    }
+
+                    acc += weight;
+                    if (roll <= acc)
+                    {
+                        return dict;
+                    }
+                }
+
+                return new Godot.Collections.Dictionary<string, Variant>();
+            }
+
+            private string ResolveDropTableForActiveLevel(string monsterId, string configuredDropTableId)
+            {
+                string levelId = ActiveLevelId;
+                if (!string.IsNullOrEmpty(configuredDropTableId)
+                    && TryGetDropTable(configuredDropTableId, out var configuredTable)
+                    && IsTableBoundToLevel(configuredTable, levelId))
+                {
+                    return configuredDropTableId;
+                }
+
+                foreach (var kv in _dropTableById)
+                {
+                    var table = kv.Value;
+                    if (!IsTableBoundToLevel(table, levelId))
+                    {
+                        continue;
+                    }
+
+                    if (!IsTableBoundToMonster(table, monsterId))
+                    {
+                        continue;
+                    }
+
+                    return kv.Key;
+                }
+
+                return configuredDropTableId;
+            }
         }
 
         public bool TryGetMonster(string monsterId, out Godot.Collections.Dictionary<string, Variant> monsterData)
@@ -232,7 +700,7 @@ namespace Xiuxian.Scripts.Services
                 return "";
             }
 
-            int roll = _rng.RandiRange(1, totalWeight);
+            int roll = _rng.NextInt(1, totalWeight);
             int acc = 0;
             foreach (Variant item in spawnTable)
             {
@@ -463,8 +931,8 @@ namespace Xiuxian.Scripts.Services
                 insightMax = insightMin;
             }
 
-            lingqi = _rng.RandiRange(lingqiMin, lingqiMax);
-            insight = _rng.RandiRange(insightMin, insightMax);
+            lingqi = _rng.NextInt(lingqiMin, lingqiMax);
+            insight = _rng.NextInt(insightMin, insightMax);
             return true;
         }
 
@@ -540,8 +1008,8 @@ namespace Xiuxian.Scripts.Services
                     insightMax = insightMin;
                 }
 
-                lingqi = _rng.RandiRange(lingqiMin, lingqiMax);
-                insight = _rng.RandiRange(insightMin, insightMax);
+                lingqi = _rng.NextInt(lingqiMin, lingqiMax);
+                insight = _rng.NextInt(insightMin, insightMax);
             }
 
             _levelClearCountById[ActiveLevelId] = clearCount + 1;
@@ -1206,7 +1674,7 @@ namespace Xiuxian.Scripts.Services
                 string itemId = GetString(picked, "item_id", "");
                 int minQty = Math.Max(0, picked.ContainsKey("min_qty") ? picked["min_qty"].AsInt32() : 1);
                 int maxQty = Math.Max(minQty, picked.ContainsKey("max_qty") ? picked["max_qty"].AsInt32() : minQty);
-                int qty = _rng.RandiRange(minQty, maxQty);
+                int qty = _rng.NextInt(minQty, maxQty);
                 AddDrop(result, itemId, qty);
             }
         }
@@ -1255,7 +1723,7 @@ namespace Xiuxian.Scripts.Services
             out int hourlyCountAfterConsume)
         {
             hourlyCountAfterConsume = 0;
-            long unix = (long)Time.GetUnixTimeFromSystem();
+            long unix = _clock.GetUnixTimeSeconds();
             long dayIndex = unix / 86400;
             long hourIndex = unix / 3600;
 
@@ -1302,7 +1770,7 @@ namespace Xiuxian.Scripts.Services
 
             int overflow = hourlyCountAfterConsume - softCap;
             double allowChance = Math.Pow(Math.Min(1.0, decay), overflow);
-            bool skipped = _rng.Randf() > allowChance;
+            bool skipped = _rng.NextSingle() > allowChance;
             if (skipped)
             {
                 _lastSoftCapSkipped = true;
@@ -1393,7 +1861,7 @@ namespace Xiuxian.Scripts.Services
                 return new Godot.Collections.Dictionary<string, Variant>();
             }
 
-            int roll = _rng.RandiRange(1, totalWeight);
+            int roll = _rng.NextInt(1, totalWeight);
             int acc = 0;
             foreach (Variant item in entries)
             {
