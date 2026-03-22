@@ -15,6 +15,7 @@ namespace Xiuxian.Scripts.Game
         private const string LegacyGameStatePath = "user://game_state.cfg";
         private const double SaveIntervalSeconds = 0.5;
         private const double DefaultActivitySaveMarkIntervalSeconds = 10.0;
+        private const double CloudUploadMinIntervalSeconds = 20.0;
 
         private MainBarLayoutController _mainBar = null!;
         private SubmenuWindowController _submenu = null!;
@@ -32,6 +33,8 @@ namespace Xiuxian.Scripts.Game
 
         private bool _saveDirty;
         private double _saveCooldown;
+        private bool _cloudUploadPending;
+        private double _cloudUploadCooldown;
         private double _activitySaveMarkTimer;
         private double _activitySaveMarkIntervalSeconds = DefaultActivitySaveMarkIntervalSeconds;
 
@@ -53,6 +56,7 @@ namespace Xiuxian.Scripts.Game
 
             _mainBar.BookButtonPressed += _submenu.ToggleVisible;
             _mainBar.LayoutChanged += (_, _) => MarkDirty();
+            _submenu.LayoutChanged += (_, _) => MarkDirty();
             _submenu.VisibilityChanged += _ => MarkDirty();
             _bookTabs.ActiveTabsChanged += (_, _) =>
             {
@@ -125,19 +129,17 @@ namespace Xiuxian.Scripts.Game
 
         public override void _Process(double delta)
         {
-            if (!_saveDirty)
+            if (_saveDirty)
             {
-                return;
+                _saveCooldown -= delta;
+                if (_saveCooldown <= 0.0)
+                {
+                    SaveAllState();
+                    _saveDirty = false;
+                }
             }
 
-            _saveCooldown -= delta;
-            if (_saveCooldown > 0.0)
-            {
-                return;
-            }
-
-            SaveAllState();
-            _saveDirty = false;
+            ProcessCloudUpload(delta);
         }
 
         public override void _Notification(int what)
@@ -145,6 +147,7 @@ namespace Xiuxian.Scripts.Game
             if (what == NotificationWMCloseRequest)
             {
                 SaveAllState();
+                TryUploadCloudNow();
             }
         }
 
@@ -187,6 +190,8 @@ namespace Xiuxian.Scripts.Game
 
             _saveDirty = false;
             _saveCooldown = SaveIntervalSeconds;
+            _cloudUploadPending = false;
+            _cloudUploadCooldown = 0.0;
             _activitySaveMarkTimer = 0.0;
             RefreshRuntimeSettingsFromBookTabs();
         }
@@ -203,7 +208,48 @@ namespace Xiuxian.Scripts.Game
                 return;
             }
 
-            _cloudSaveSyncService?.TryUploadLocal(_cloudSyncEnabled);
+            if (_cloudSyncEnabled)
+            {
+                _cloudUploadPending = true;
+            }
+        }
+
+        private void ProcessCloudUpload(double delta)
+        {
+            if (!_cloudUploadPending || !_cloudSyncEnabled || _cloudSaveSyncService == null)
+            {
+                return;
+            }
+
+            _cloudUploadCooldown -= delta;
+            if (_cloudUploadCooldown > 0.0)
+            {
+                return;
+            }
+
+            if (_cloudSaveSyncService.TryUploadLocal(true))
+            {
+                _cloudUploadPending = false;
+                _cloudUploadCooldown = CloudUploadMinIntervalSeconds;
+            }
+            else
+            {
+                _cloudUploadCooldown = Math.Max(1.0, CloudUploadMinIntervalSeconds * 0.5);
+            }
+        }
+
+        private void TryUploadCloudNow()
+        {
+            if (!_cloudSyncEnabled || _cloudSaveSyncService == null)
+            {
+                return;
+            }
+
+            if (_cloudSaveSyncService.TryUploadLocal(true))
+            {
+                _cloudUploadPending = false;
+                _cloudUploadCooldown = CloudUploadMinIntervalSeconds;
+            }
         }
 
         private bool LoadUnifiedState()
@@ -239,12 +285,134 @@ namespace Xiuxian.Scripts.Game
             ConfigFile gameConfig = new();
             if (gameConfig.Load(LegacyGameStatePath) == Error.Ok)
             {
-                PrototypeRootSaveSnapshot snapshot = PrototypeRootSaveContract.Read(gameConfig);
-                _activityState?.FromDictionary(RawVariantBridge.ToVariantDictionary(snapshot.InputStats));
-                if (snapshot.HookPaused)
-                {
-                    GD.PushWarning("PrototypeRootController: saved hook_paused=true detected, auto-resuming input capture.");
-                }
+                ReadInputState(gameConfig);
+            }
+        }
+
+        private void ReadUiState(ConfigFile config, int version)
+        {
+            float mainBarX = config.GetValue("ui", "main_bar_x", _mainBar.Position.X).AsSingle();
+            float mainBarY = config.GetValue("ui", "main_bar_y", _mainBar.Position.Y).AsSingle();
+            float mainBarWidth = config.GetValue("ui", "main_bar_width", _mainBar.Size.X).AsSingle();
+            _mainBar.ApplyLayout(mainBarX, mainBarY, mainBarWidth);
+
+            float submenuX = config.GetValue("ui", "submenu_x", _submenu.Position.X).AsSingle();
+            float submenuY = config.GetValue("ui", "submenu_y", _submenu.Position.Y).AsSingle();
+            _submenu.ApplySavedLayout(submenuX, submenuY);
+
+            string activeLeftTab = config.GetValue("ui", "submenu_active_left_tab", "CultivationTab").AsString();
+            string activeRightTab = config.GetValue("ui", "submenu_active_right_tab", "OnlineTab").AsString();
+
+            if (version < 2 || !config.HasSectionKey("ui", "submenu_active_left_tab"))
+            {
+                // Legacy single-tab key: migrate into left-page tab selection.
+                activeLeftTab = config.GetValue("ui", "submenu_active_tab", "CultivationTab").AsString();
+            }
+
+            _bookTabs.RestoreActiveTabs(activeLeftTab, activeRightTab);
+
+            bool submenuVisible = config.GetValue("ui", "submenu_visible", false).AsBool();
+            _submenu.SetVisibleImmediate(submenuVisible);
+        }
+
+        private void WriteUiState(ConfigFile config)
+        {
+            config.SetValue("ui", "main_bar_x", _mainBar.Position.X);
+            config.SetValue("ui", "main_bar_y", _mainBar.Position.Y);
+            config.SetValue("ui", "main_bar_width", _mainBar.Size.X);
+            config.SetValue("ui", "submenu_x", _submenu.Position.X);
+            config.SetValue("ui", "submenu_y", _submenu.Position.Y);
+            config.SetValue("ui", "submenu_visible", _submenu.Visible);
+            config.SetValue("ui", "submenu_active_left_tab", _bookTabs.ActiveLeftTabName);
+            config.SetValue("ui", "submenu_active_right_tab", _bookTabs.ActiveRightTabName);
+        }
+
+        private void ReadInputState(ConfigFile config)
+        {
+            if (_activityState == null)
+            {
+                return;
+            }
+
+            Variant inputData = config.GetValue("input", "stats", new Godot.Collections.Dictionary<string, Variant>());
+            if (inputData.VariantType == Variant.Type.Dictionary)
+            {
+                _activityState.FromDictionary((Godot.Collections.Dictionary<string, Variant>)inputData);
+            }
+
+            bool hookPaused = config.GetValue("input", "hook_paused", false).AsBool();
+            if (hookPaused)
+            {
+                GD.PushWarning("PrototypeRootController: saved hook_paused=true detected, auto-resuming input capture.");
+            }
+            _hookService?.SetPaused(false);
+        }
+
+        private void WriteInputState(ConfigFile config)
+        {
+            if (_activityState == null)
+            {
+                return;
+            }
+
+            config.SetValue("input", "stats", _activityState.ToDictionary());
+            config.SetValue("input", "hook_paused", _hookService?.IsPaused ?? false);
+        }
+
+        private void ReadBackpackState(ConfigFile config)
+        {
+            if (_backpackState == null)
+            {
+                return;
+            }
+
+            Variant backpackData = config.GetValue("backpack", "items", new Godot.Collections.Dictionary<string, Variant>());
+            if (backpackData.VariantType == Variant.Type.Dictionary)
+            {
+                _backpackState.FromDictionary((Godot.Collections.Dictionary<string, Variant>)backpackData);
+            }
+        }
+
+        private void WriteBackpackState(ConfigFile config)
+        {
+            if (_backpackState == null)
+            {
+                return;
+            }
+
+            config.SetValue("backpack", "items", _backpackState.ToDictionary());
+        }
+
+        private void ReadResourceState(ConfigFile config)
+        {
+            if (_resourceWalletState == null)
+            {
+                return;
+            }
+
+            Variant walletData = config.GetValue("resource", "wallet", new Godot.Collections.Dictionary<string, Variant>());
+            if (walletData.VariantType == Variant.Type.Dictionary)
+            {
+                _resourceWalletState.FromDictionary((Godot.Collections.Dictionary<string, Variant>)walletData);
+            }
+        }
+
+        private void WriteResourceState(ConfigFile config)
+        {
+            if (_resourceWalletState == null)
+            {
+                return;
+            }
+
+            config.SetValue("resource", "wallet", _resourceWalletState.ToDictionary());
+        }
+
+        private void ReadPlayerProgressState(ConfigFile config)
+        {
+            if (_playerProgressState == null)
+            {
+                return;
+            }
 
                 _hookService?.SetPaused(false);
             }
@@ -322,16 +490,42 @@ namespace Xiuxian.Scripts.Game
                 : RawVariantBridge.ToRawDictionary(data);
         }
 
+        private void WriteSystemSettings(ConfigFile config)
+        {
+            var dict = _bookTabs.ToSystemSettingsDictionary();
+            config.SetValue("settings", "system", dict);
+            bool cloudSyncEnabled = dict.ContainsKey("cloud_sync") && dict["cloud_sync"].AsBool();
+            UpdateCloudSyncRuntime(cloudSyncEnabled);
+            _activitySaveMarkIntervalSeconds = ReadActivitySaveInterval(dict);
+        }
 
         private void RefreshRuntimeSettingsFromBookTabs()
         {
             var dict = _bookTabs.ToSystemSettingsDictionary();
-            _cloudSyncEnabled = dict.ContainsKey("cloud_sync") && dict["cloud_sync"].AsBool();
+            bool cloudSyncEnabled = dict.ContainsKey("cloud_sync") && dict["cloud_sync"].AsBool();
+            UpdateCloudSyncRuntime(cloudSyncEnabled);
             _activitySaveMarkIntervalSeconds = ReadActivitySaveInterval(dict);
             bool showValidationPanel = !dict.ContainsKey("show_validation_panel") || dict["show_validation_panel"].AsBool();
             _exploreProgressController?.SetValidationPanelEnabled(showValidationPanel);
             bool globalDebugOverlay = dict.ContainsKey("global_debug_overlay") && dict["global_debug_overlay"].AsBool();
             _exploreProgressController?.SetGlobalDebugOverlayEnabled(globalDebugOverlay);
+        }
+
+        private void UpdateCloudSyncRuntime(bool enabled)
+        {
+            bool changed = _cloudSyncEnabled != enabled;
+            _cloudSyncEnabled = enabled;
+            if (!_cloudSyncEnabled)
+            {
+                _cloudUploadPending = false;
+                return;
+            }
+
+            if (changed)
+            {
+                _cloudUploadPending = true;
+                _cloudUploadCooldown = 0.0;
+            }
         }
 
         private static double ReadActivitySaveInterval(Godot.Collections.Dictionary<string, Variant> dict)

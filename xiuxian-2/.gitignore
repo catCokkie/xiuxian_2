@@ -1,3 +1,23 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# Godot import/cache outputs
+.import/
+
+# .NET build outputs
+bin/
+obj/
+
+# IDE / editor files
+.vs/
+.idea/
+*.user
+*.suo
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Windows reserved device name occasionally surfaced by tooling
+nul

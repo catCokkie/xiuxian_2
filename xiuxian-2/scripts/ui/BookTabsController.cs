@@ -1,6 +1,7 @@
 ﻿using Godot;
 using System.Collections.Generic;
 using System.Globalization;
+using Xiuxian.Scripts.Game;
 using Xiuxian.Scripts.Services;
 
 public partial class BookTabsController : Control
@@ -25,6 +26,9 @@ public partial class BookTabsController : Control
     private RichTextLabel _leftContentLabel = null!;
     private Label _leftTitleLabel = null!;
     private Label _coinLabel = null!;
+    private Panel _recentBattlePanel = null!;
+    private Label _recentBattlePanelTitle = null!;
+    private ItemList _recentBattleList = null!;
     private Control _leftPage = null!;
     private Control _rightPage = null!;
     private Button _closeButton = null!;
@@ -37,6 +41,8 @@ public partial class BookTabsController : Control
     private Button _settingsSystemBtn = null!;
     private Button _settingsDisplayBtn = null!;
     private Button _settingsProgressBtn = null!;
+    private Button _runtimeToggleModeButton = null!;
+    private Button _runtimeNextLevelButton = null!;
 
     private OptionButton _languageOption = null!;
     private CheckButton _keepOnTopCheck = null!;
@@ -63,6 +69,7 @@ public partial class BookTabsController : Control
     private BackpackState? _backpackState;
     private ResourceWalletState? _resourceWalletState;
     private PlayerProgressState? _playerProgressState;
+    private ExploreProgressController? _exploreProgressController;
 
     public string ActiveLeftTabName { get; private set; } = "CultivationTab";
     public string ActiveRightTabName { get; private set; } = "OnlineTab";
@@ -83,7 +90,7 @@ public partial class BookTabsController : Control
         ["max_fps"] = 60,
         ["resolution"] = "1600x900",
         ["show_control_markers"] = true,
-        ["show_validation_panel"] = true,
+        ["show_validation_panel"] = false,
         ["game_scale"] = 1.33,
         ["ui_scale"] = 1.0,
         ["auto_save_interval_sec"] = 10,
@@ -105,6 +112,7 @@ public partial class BookTabsController : Control
         _backpackState = GetNodeOrNull<BackpackState>("/root/BackpackState");
         _resourceWalletState = GetNodeOrNull<ResourceWalletState>("/root/ResourceWalletState");
         _playerProgressState = GetNodeOrNull<PlayerProgressState>("/root/PlayerProgressState");
+        _exploreProgressController = GetNodeOrNull<ExploreProgressController>("/root/PrototypeRoot/ExploreProgressController");
 
         if (_activityState != null)
         {
@@ -122,10 +130,15 @@ public partial class BookTabsController : Control
         {
             _playerProgressState.RealmProgressChanged += OnRealmProgressChanged;
         }
+        if (_exploreProgressController != null)
+        {
+            _exploreProgressController.RecentBattleLogsChanged += OnRecentBattleLogsChanged;
+        }
 
         ApplyStaticTexts();
 
         BuildSettingsUi();
+        BuildRecentBattlePanel();
         ApplySettingsRuntime();
         UpdateSettingsControlsFromState();
         UpdateSettingsUiVisibility();
@@ -155,6 +168,10 @@ public partial class BookTabsController : Control
         if (_playerProgressState != null)
         {
             _playerProgressState.RealmProgressChanged -= OnRealmProgressChanged;
+        }
+        if (_exploreProgressController != null)
+        {
+            _exploreProgressController.RecentBattleLogsChanged -= OnRecentBattleLogsChanged;
         }
     }
 
@@ -245,6 +262,12 @@ public partial class BookTabsController : Control
         RefreshDynamicTabContent();
     }
 
+    private void OnRecentBattleLogsChanged()
+    {
+        RefreshRecentBattlePanel();
+        RefreshDynamicTabContent();
+    }
+
     private void RefreshDynamicTabContent()
     {
         if (ActiveRightTabName == "SettingsTab")
@@ -255,6 +278,11 @@ public partial class BookTabsController : Control
         if (!_isShowingRightTab && (ActiveLeftTabName == "CultivationTab" || ActiveLeftTabName == "StatsTab"))
         {
             _leftContentLabel.Text = GetLeftTabContent(ActiveLeftTabName);
+        }
+
+        if (!_isShowingRightTab && ActiveLeftTabName == "StatsTab")
+        {
+            RefreshRecentBattlePanel();
         }
     }
 
@@ -300,15 +328,16 @@ public partial class BookTabsController : Control
         int herbCount = _backpackState?.GetItemCount("spirit_herb") ?? 0;
         int shardCount = _backpackState?.GetItemCount("lingqi_shard") ?? 0;
 
-        return
-            UiText.StatsOverview(
-                _activityState.TotalKeyDownCount,
-                _activityState.TotalMouseClickCount,
-                _activityState.TotalMouseScrollSteps,
-                _activityState.TotalMouseMoveDistancePx,
-                _activityState.ApAccumulator,
-                herbCount,
-                shardCount);
+        string baseStats = UiText.StatsOverview(
+            _activityState.TotalKeyDownCount,
+            _activityState.TotalMouseClickCount,
+            _activityState.TotalMouseScrollSteps,
+            _activityState.TotalMouseMoveDistancePx,
+            _activityState.ApAccumulator,
+            herbCount,
+            shardCount);
+
+        return baseStats;
     }
 
     private void RefreshCoinLabel()
@@ -335,8 +364,122 @@ public partial class BookTabsController : Control
         EmitSignal(SignalName.ActiveTabsChanged, ActiveLeftTabName, ActiveRightTabName);
     }
 
+    private void BuildRecentBattlePanel()
+    {
+        if (_recentBattlePanel != null)
+        {
+            return;
+        }
+
+        // Reserve the lower area of the left page for a dedicated recent battle list.
+        _leftContentLabel.OffsetBottom = -166.0f;
+
+        _recentBattlePanel = new Panel();
+        _recentBattlePanel.Name = "RecentBattlePanel";
+        _recentBattlePanel.SetAnchorsPreset(LayoutPreset.FullRect);
+        _recentBattlePanel.OffsetLeft = 16.0f;
+        _recentBattlePanel.OffsetTop = 236.0f;
+        _recentBattlePanel.OffsetRight = -16.0f;
+        _recentBattlePanel.OffsetBottom = -16.0f;
+        _recentBattlePanel.Visible = false;
+        _leftPage.AddChild(_recentBattlePanel);
+
+        VBoxContainer root = new();
+        root.SetAnchorsPreset(LayoutPreset.FullRect);
+        root.OffsetLeft = 10.0f;
+        root.OffsetTop = 8.0f;
+        root.OffsetRight = -10.0f;
+        root.OffsetBottom = -8.0f;
+        root.AddThemeConstantOverride("separation", 6);
+        _recentBattlePanel.AddChild(root);
+
+        _recentBattlePanelTitle = new Label();
+        _recentBattlePanelTitle.Text = UiText.RecentBattleLogsTitle;
+        root.AddChild(_recentBattlePanelTitle);
+
+        _recentBattleList = new ItemList();
+        _recentBattleList.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        _recentBattleList.AutoHeight = false;
+        _recentBattleList.FocusMode = Control.FocusModeEnum.None;
+        _recentBattleList.MouseFilter = Control.MouseFilterEnum.Ignore;
+        root.AddChild(_recentBattleList);
+
+        RefreshRecentBattlePanel();
+        UpdateBattleLogPanelVisibility();
+    }
+
+    private void RefreshRecentBattlePanel()
+    {
+        if (_recentBattleList == null)
+        {
+            return;
+        }
+
+        _recentBattleList.Clear();
+        if (_exploreProgressController == null)
+        {
+            _recentBattleList.AddItem(UiText.RecentBattleLogsEmpty);
+            return;
+        }
+
+        var logs = _exploreProgressController.GetRecentBattleLogsSnapshot(10);
+        if (logs.Count == 0)
+        {
+            _recentBattleList.AddItem(UiText.RecentBattleLogsEmpty);
+            return;
+        }
+
+        foreach (var item in logs)
+        {
+            long ts = item.ContainsKey("ts") ? item["ts"].AsInt64() : 0L;
+            string timeText = ts > 0
+                ? System.DateTimeOffset.FromUnixTimeSeconds(ts).ToLocalTime().ToString("HH:mm:ss")
+                : "--:--:--";
+            string result = item.ContainsKey("result") ? item["result"].AsString() : "victory";
+            string resultText = result == "defeat" ? UiText.BattleResultDefeat : UiText.BattleResultVictory;
+            string monsterName = item.ContainsKey("monster_name") ? item["monster_name"].AsString() : UiText.DefaultMonsterName;
+            double lingqi = item.ContainsKey("lingqi") ? item["lingqi"].AsDouble() : 0.0;
+            double insight = item.ContainsKey("insight") ? item["insight"].AsDouble() : 0.0;
+
+            string itemText = UiText.BattleLogNoItems;
+            if (item.ContainsKey("items") && item["items"].VariantType == Variant.Type.Dictionary)
+            {
+                var drops = (Godot.Collections.Dictionary<string, Variant>)item["items"];
+                if (drops.Count > 0)
+                {
+                    var parts = new List<string>();
+                    foreach (string key in drops.Keys)
+                    {
+                        parts.Add($"{key} x{drops[key].AsInt32()}");
+                    }
+                    itemText = string.Join(", ", parts);
+                }
+            }
+
+            _recentBattleList.AddItem(UiText.BattleLogSummary(timeText, resultText, monsterName));
+            _recentBattleList.AddItem(UiText.BattleLogRewards(lingqi, insight, itemText));
+        }
+    }
+
+    private void UpdateBattleLogPanelVisibility()
+    {
+        if (_recentBattlePanel == null)
+        {
+            return;
+        }
+
+        bool isSettings = ActiveRightTabName == "SettingsTab";
+        bool visible = !isSettings && !_isShowingRightTab && ActiveLeftTabName == "StatsTab";
+        _recentBattlePanel.Visible = visible;
+    }
+
     private void BuildSettingsUi()
     {
+        if (_settingsNavRoot != null)
+        {
+            return;
+        }
+
         _settingsNavRoot = new HBoxContainer();
         _settingsNavRoot.Name = "SettingsNavRoot";
         _settingsNavRoot.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -345,6 +488,7 @@ public partial class BookTabsController : Control
         _settingsNavRoot.OffsetRight = -20.0f;
         _settingsNavRoot.OffsetBottom = -330.0f;
         _settingsNavRoot.AddThemeConstantOverride("separation", 8);
+        _settingsNavRoot.Visible = false;
         _leftPage.AddChild(_settingsNavRoot);
 
         _settingsSystemBtn = CreateSettingsSectionButton(UiText.SystemSection, "system");
@@ -359,7 +503,26 @@ public partial class BookTabsController : Control
         _settingsActionRoot.OffsetRight = -20.0f;
         _settingsActionRoot.OffsetBottom = -12.0f;
         _settingsActionRoot.AddThemeConstantOverride("separation", 8);
+        _settingsActionRoot.Visible = false;
         _leftPage.AddChild(_settingsActionRoot);
+
+        Label runtimeActionsLabel = new();
+        runtimeActionsLabel.Text = UiText.RuntimeActionsTitle;
+        _settingsActionRoot.AddChild(runtimeActionsLabel);
+
+        HBoxContainer runtimeActionsRow = new();
+        runtimeActionsRow.AddThemeConstantOverride("separation", 8);
+        _settingsActionRoot.AddChild(runtimeActionsRow);
+
+        _runtimeToggleModeButton = new Button();
+        _runtimeToggleModeButton.Text = UiText.ActionModeQuickToggle;
+        _runtimeToggleModeButton.Pressed += OnRuntimeToggleModePressed;
+        runtimeActionsRow.AddChild(_runtimeToggleModeButton);
+
+        _runtimeNextLevelButton = new Button();
+        _runtimeNextLevelButton.Text = UiText.NextLevelQuickButton;
+        _runtimeNextLevelButton.Pressed += OnRuntimeNextLevelPressed;
+        runtimeActionsRow.AddChild(_runtimeNextLevelButton);
 
         Button resetButton = new();
         resetButton.Text = UiText.ResetAndApply;
@@ -400,6 +563,7 @@ public partial class BookTabsController : Control
         root.OffsetRight = -20.0f;
         root.OffsetBottom = -128.0f;
         root.AddThemeConstantOverride("separation", 6);
+        root.Visible = false;
         _leftPage.AddChild(root);
         return root;
     }
@@ -512,10 +676,7 @@ public partial class BookTabsController : Control
     private void ShowSettingsSection(string sectionId)
     {
         _activeSettingsSection = sectionId;
-
-        _settingsSystemRoot.Visible = sectionId == "system";
-        _settingsDisplayRoot.Visible = sectionId == "display";
-        _settingsProgressRoot.Visible = sectionId == "progress";
+        UpdateSettingsSectionVisibility();
 
         _settingsSystemBtn.ButtonPressed = sectionId == "system";
         _settingsDisplayBtn.ButtonPressed = sectionId == "display";
@@ -527,11 +688,18 @@ public partial class BookTabsController : Control
         bool isSettings = ActiveRightTabName == "SettingsTab";
         _settingsNavRoot.Visible = isSettings;
         _settingsActionRoot.Visible = isSettings;
+        UpdateSettingsSectionVisibility();
+        _leftContentLabel.Visible = !isSettings;
+        _rightPage.Visible = false;
+        UpdateBattleLogPanelVisibility();
+    }
+
+    private void UpdateSettingsSectionVisibility()
+    {
+        bool isSettings = ActiveRightTabName == "SettingsTab";
         _settingsSystemRoot.Visible = isSettings && _activeSettingsSection == "system";
         _settingsDisplayRoot.Visible = isSettings && _activeSettingsSection == "display";
         _settingsProgressRoot.Visible = isSettings && _activeSettingsSection == "progress";
-        _leftContentLabel.Visible = !isSettings;
-        _rightPage.Visible = false;
     }
 
     private void UpdateSettingsControlsFromState()
@@ -597,7 +765,7 @@ public partial class BookTabsController : Control
         _settings["max_fps"] = 60;
         _settings["resolution"] = "1600x900";
         _settings["show_control_markers"] = true;
-        _settings["show_validation_panel"] = true;
+        _settings["show_validation_panel"] = false;
         _settings["game_scale"] = 1.33;
         _settings["ui_scale"] = 1.0;
         _settings["auto_save_interval_sec"] = 10;
@@ -608,6 +776,16 @@ public partial class BookTabsController : Control
         ApplySettingsRuntime();
         UpdateSettingsControlsFromState();
         EmitSignal(SignalName.ActiveTabsChanged, ActiveLeftTabName, ActiveRightTabName);
+    }
+
+    private void OnRuntimeToggleModePressed()
+    {
+        _exploreProgressController?.ToggleMainActionMode();
+    }
+
+    private void OnRuntimeNextLevelPressed()
+    {
+        _exploreProgressController?.TrySelectNextUnlockedLevel();
     }
 
     private void OnLanguageChanged()
@@ -746,11 +924,15 @@ public partial class BookTabsController : Control
         {
             _leftTitleLabel.Text = ButtonTextForTab("TopStrip/RightTabs", ActiveRightTabName);
             AnimateContentSwap(_leftContentLabel, _leftTween, _rightTabContentMap[ActiveRightTabName], tween => _leftTween = tween, false);
+            RefreshRecentBattlePanel();
+            UpdateBattleLogPanelVisibility();
             return;
         }
 
         _leftTitleLabel.Text = ButtonTextForTab("TopStrip/LeftTabs", ActiveLeftTabName);
         AnimateContentSwap(_leftContentLabel, _leftTween, GetLeftTabContent(ActiveLeftTabName), tween => _leftTween = tween, true);
+        RefreshRecentBattlePanel();
+        UpdateBattleLogPanelVisibility();
     }
 
     private void CloseWindow()

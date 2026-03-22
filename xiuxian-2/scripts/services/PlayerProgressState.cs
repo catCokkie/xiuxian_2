@@ -1,5 +1,6 @@
 using Godot;
 using System;
+using Xiuxian.Scripts.Core;
 
 namespace Xiuxian.Scripts.Services
 {
@@ -19,7 +20,7 @@ namespace Xiuxian.Scripts.Services
         public int PetMood { get; private set; } = 60;
         [Export] public bool AutoBreakthrough = false;
 
-        public double RealmExpRequired => GetExpRequired(RealmLevel);
+        public double RealmExpRequired => PlayerBreakthroughRule.GetExpRequired(RealmLevel);
         public bool CanBreakthrough => RealmExp >= RealmExpRequired;
 
         public void AddRealmExp(double amount)
@@ -50,13 +51,14 @@ namespace Xiuxian.Scripts.Services
 
         public bool TryBreakthrough()
         {
-            if (!CanBreakthrough)
+            PlayerBreakthroughResult result = PlayerBreakthroughRule.TryBreakthrough(RealmLevel, RealmExp);
+            if (!result.Succeeded)
             {
                 return false;
             }
 
-            RealmExp -= RealmExpRequired;
-            RealmLevel++;
+            RealmExp = result.RemainingRealmExp;
+            RealmLevel = result.NextRealmLevel;
             EmitSignal(SignalName.RealmLevelUp, RealmLevel);
             EmitSignal(SignalName.RealmProgressChanged, RealmLevel, RealmExp, RealmExpRequired);
             GD.Print($"PlayerProgressState: realm level up -> {RealmLevel}");
@@ -97,8 +99,7 @@ namespace Xiuxian.Scripts.Services
 
         public static double GetExpRequired(int realmLevel)
         {
-            int r = Math.Max(1, realmLevel);
-            return 120.0 * Math.Pow(r, 1.32) + 180.0;
+            return PlayerBreakthroughRule.GetExpRequired(realmLevel);
         }
 
         public Godot.Collections.Dictionary<string, Variant> ToDictionary()

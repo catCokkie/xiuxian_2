@@ -208,7 +208,7 @@ namespace Xiuxian.Scripts.Services
 
             public bool WriteFile(string fileName, byte[] data)
             {
-                object? result = _fileWrite.Invoke(_remoteStorageType, new object[] { fileName, data, data.Length });
+                object? result = _fileWrite.Invoke(null, new object[] { fileName, data, data.Length });
                 return result is bool ok && ok;
             }
 
@@ -216,13 +216,13 @@ namespace Xiuxian.Scripts.Services
             {
                 data = Array.Empty<byte>();
 
-                object? existsResult = _fileExists.Invoke(_remoteStorageType, new object[] { fileName });
+                object? existsResult = _fileExists.Invoke(null, new object[] { fileName });
                 if (existsResult is not bool exists || !exists)
                 {
                     return false;
                 }
 
-                object? sizeResult = _getFileSize.Invoke(_remoteStorageType, new object[] { fileName });
+                object? sizeResult = _getFileSize.Invoke(null, new object[] { fileName });
                 int size = sizeResult is int n ? n : 0;
                 if (size <= 0)
                 {
@@ -230,11 +230,16 @@ namespace Xiuxian.Scripts.Services
                 }
 
                 byte[] buffer = new byte[size];
-                object? readResult = _fileRead.Invoke(_remoteStorageType, new object[] { fileName, buffer, size });
+                object? readResult = _fileRead.Invoke(null, new object[] { fileName, buffer, size });
                 int read = readResult is int r ? r : 0;
                 if (read <= 0)
                 {
                     return false;
+                }
+
+                if (read < size)
+                {
+                    Array.Resize(ref buffer, read);
                 }
 
                 data = buffer;

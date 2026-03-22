@@ -2,13 +2,13 @@
 # Visual Studio 2012
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "xiuxian2", "xiuxian2.csproj", "{AD430ADF-023C-487B-9B12-C41382C1FB9B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Xiuxian2.Core.Tests", "..\tests\Xiuxian2.Core.Tests\Xiuxian2.Core.Tests.csproj", "{ED20CC79-889E-47B6-BFDB-BDC1568270B9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "xiuxian2.Tests", "tests\xiuxian2.Tests\xiuxian2.Tests.csproj", "{9E4F6622-820B-4D07-8CAA-360E9C2779EC}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
-		ExportDebug|Any CPU = ExportDebug|Any CPU
-		ExportRelease|Any CPU = ExportRelease|Any CPU
+	ExportDebug|Any CPU = ExportDebug|Any CPU
+	ExportRelease|Any CPU = ExportRelease|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{AD430ADF-023C-487B-9B12-C41382C1FB9B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
@@ -17,11 +17,9 @@ Global
 		{AD430ADF-023C-487B-9B12-C41382C1FB9B}.ExportDebug|Any CPU.Build.0 = ExportDebug|Any CPU
 		{AD430ADF-023C-487B-9B12-C41382C1FB9B}.ExportRelease|Any CPU.ActiveCfg = ExportRelease|Any CPU
 		{AD430ADF-023C-487B-9B12-C41382C1FB9B}.ExportRelease|Any CPU.Build.0 = ExportRelease|Any CPU
-		{ED20CC79-889E-47B6-BFDB-BDC1568270B9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{ED20CC79-889E-47B6-BFDB-BDC1568270B9}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{ED20CC79-889E-47B6-BFDB-BDC1568270B9}.ExportDebug|Any CPU.ActiveCfg = Debug|Any CPU
-		{ED20CC79-889E-47B6-BFDB-BDC1568270B9}.ExportDebug|Any CPU.Build.0 = Debug|Any CPU
-		{ED20CC79-889E-47B6-BFDB-BDC1568270B9}.ExportRelease|Any CPU.ActiveCfg = Debug|Any CPU
-		{ED20CC79-889E-47B6-BFDB-BDC1568270B9}.ExportRelease|Any CPU.Build.0 = Debug|Any CPU
+		{9E4F6622-820B-4D07-8CAA-360E9C2779EC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9E4F6622-820B-4D07-8CAA-360E9C2779EC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9E4F6622-820B-4D07-8CAA-360E9C2779EC}.ExportDebug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9E4F6622-820B-4D07-8CAA-360E9C2779EC}.ExportRelease|Any CPU.ActiveCfg = Debug|Any CPU
 	EndGlobalSection
 EndGlobal
