@@ -12,6 +12,7 @@ public static class UiText
     public const string RealmFallback = "炼气一层";
 
     public const string LeftTabCultivation = "修炼概况";
+    public const string LeftTabBattleLog = "战斗日志";
     public const string LeftTabEquipment = "装备情况";
     public const string LeftTabStats = "统计概览";
     public const string RightTabOnline = "联机";
@@ -43,6 +44,18 @@ public static class UiText
     public const string CloudSync = "云端同步";
     public const string MilestoneTips = "里程碑提示";
     public const string GlobalDebugOverlay = "全局调试信息";
+    public const string ReservedSuffix = "（预留）";
+    public const string ExperimentalSuffix = "（实验）";
+    public const string BugFeedbackTitle = "Bug反馈";
+    public const string BugFeedbackHint = "描述你刚刚遇到的问题、触发步骤，以及是否能稳定复现。";
+    public const string BugFeedbackInputPlaceholder = "例如：切到设置页后窗口宽度异常，点击关闭后再次打开可复现。";
+    public const string CopyLogPath = "复制日志路径";
+    public const string ExportFeedbackPack = "导出反馈文件";
+    public const string OpenDataFolder = "打开数据目录";
+    public const string BugFeedbackEmptyWarning = "请先输入问题描述，再导出反馈文件。";
+    public const string BugFeedbackCopied = "已复制日志目录到剪贴板。";
+    public const string BugFeedbackExportedPrefix = "反馈文件已导出：";
+    public const string BugFeedbackExportFailed = "反馈文件导出失败，请稍后重试。";
     public const string ActionModeDungeon = "主行为: 副本";
     public const string ActionModeCultivation = "主行为: 修炼";
     public const string LevelSelectPrefix = "副本:";
@@ -70,8 +83,7 @@ public static class UiText
         double expPercent,
         double lingqi,
         double insight,
-        double petAffinity,
-        double moodMultiplier)
+        double petAffinity)
     {
         return
             $"{LeftTabCultivation}\n" +
@@ -79,8 +91,7 @@ public static class UiText
             $"- 境界经验: {realmExp:0.0}/{realmExpRequired:0.0} ({expPercent:0}%)\n" +
             $"- 灵气: {lingqi:0.0}\n" +
             $"- 悟性: {insight:0.0}\n" +
-            $"- 灵宠亲和: {petAffinity:0.0}\n" +
-            $"- 心情倍率: x{moodMultiplier:0.00}";
+            $"- 灵宠亲和: {petAffinity:0.0}";
     }
 
     public static string StatsOverview(
@@ -109,12 +120,19 @@ public static class UiText
     public static string EquipmentTemplate =>
         $"{LeftTabEquipment}\n- 武器/护具/饰品\n- 词条预览\n- 套装效果";
 
+    public static string EquipmentEmpty =>
+        $"{LeftTabEquipment}\n当前未装备任何物品。\n默认测试装会在空存档时自动注入。";
+
+    public static string BattleLogEmpty =>
+        $"{LeftTabBattleLog}\n当前暂无战斗记录。\n继续探索后，最近 10 次战斗会显示在这里。";
+
     public static string StatsTemplate =>
         $"{LeftTabStats}\n- 总输入次数\n- 累计探索时长\n- 战斗胜率";
 
-    public static string OnlineTemplate =>
-        $"{RightTabOnline}\n该功能开发中。";
-
     public static string BugTemplate =>
         $"{RightTabBug}\n- 描述问题\n- 复制日志路径\n- 导出反馈包";
+
+    public static string ReservedLabel(string title) => $"{title}{ReservedSuffix}";
+
+    public static string ExperimentalLabel(string title) => $"{title}{ExperimentalSuffix}";
 }

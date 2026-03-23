@@ -109,14 +109,19 @@ namespace Xiuxian.Scripts.Services
             PruneRollingWindow();
 
             double apPerSecondEquivalent = RollingWindowSeconds > 0.0 ? _rollingRawApSum / RollingWindowSeconds : _rollingRawApSum;
-            double decayMultiplier = CalculateDecayMultiplier(apPerSecondEquivalent);
-            double capMultiplier = CalculateCapMultiplier();
+            double decayMultiplier = InputActivityRules.CalculateDecayMultiplier(
+                apPerSecondEquivalent,
+                ApBaseline,
+                DecayThreshold,
+                DecayRate,
+                MinDecayMultiplier);
+            double capMultiplier = InputActivityRules.CalculateCapMultiplier(_apFinalThisMinute, SoftCapPerMinute, MinCapMultiplier);
 
             ApThisSecond = apRawBatch;
             ApFinal = apRawBatch * decayMultiplier * capMultiplier;
             _apFinalThisMinute += ApFinal;
 
-            ApAccumulator = Math.Max(0.0, ApAccumulator + ApFinal - AccumulatorDrainPerSecond * delta);
+            ApAccumulator = InputActivityRules.CalculateAccumulator(ApAccumulator, ApFinal, AccumulatorDrainPerSecond, delta);
 
             EmitSignal(SignalName.ActivityTick, ApThisSecond, ApFinal);
             EmitSignal(SignalName.InputBatchTick, InputEventsThisSecond, ApFinal);
@@ -248,42 +253,6 @@ namespace Xiuxian.Scripts.Services
             {
                 _rollingRawApSum = 0.0;
             }
-        }
-
-        private double CalculateDecayMultiplier(double apPerSecond)
-        {
-            double ratio = ApBaseline > 0 ? apPerSecond / ApBaseline : apPerSecond;
-            double decay = 1.0 - Math.Max(0, ratio - DecayThreshold) * DecayRate;
-            if (decay < MinDecayMultiplier)
-            {
-                return MinDecayMultiplier;
-            }
-            if (decay > 1.0)
-            {
-                return 1.0;
-            }
-            return decay;
-        }
-
-        private double CalculateCapMultiplier()
-        {
-            if (SoftCapPerMinute <= 0.0)
-            {
-                return 1.0;
-            }
-
-            double ratio = _apFinalThisMinute / SoftCapPerMinute;
-            if (ratio <= 1.0)
-            {
-                return 1.0;
-            }
-
-            double multiplier = 1.0 / ratio;
-            if (multiplier < MinCapMultiplier)
-            {
-                return MinCapMultiplier;
-            }
-            return multiplier;
         }
 
         public Godot.Collections.Dictionary<string, Variant> ToDictionary()

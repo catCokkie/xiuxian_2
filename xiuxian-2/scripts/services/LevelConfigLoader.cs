@@ -79,7 +79,21 @@ namespace Xiuxian.Scripts.Services
                 return false;
             }
 
-            string text = file.GetAsText();
+            return LoadConfigFromText(file.GetAsText());
+        }
+
+        public bool LoadConfigFromText(string text)
+        {
+            _monsterById.Clear();
+            _dropTableById.Clear();
+            _levelClearCountById.Clear();
+            _pityCounterByKey.Clear();
+            _dailyRollCountByTable.Clear();
+            _dailyRollDayByTable.Clear();
+            _hourlyRollCountByTable.Clear();
+            _hourlyRollHourByTable.Clear();
+            _bossClearedLevelIds.Clear();
+
             Variant parsed = Json.ParseString(text);
             if (parsed.VariantType != Variant.Type.Dictionary)
             {
@@ -270,20 +284,57 @@ namespace Xiuxian.Scripts.Services
             inputsPerRound = 18;
             attack = 4;
 
+            if (!TryGetMonsterStatProfile(monsterId, out MonsterStatProfile profile))
+            {
+                return false;
+            }
+
+            monsterName = profile.DisplayName;
+            hp = profile.BaseStats.MaxHp;
+            inputsPerRound = profile.InputsPerRound;
+            attack = profile.BaseStats.Attack;
+            return true;
+        }
+
+        public bool TryGetMonsterStatProfile(string monsterId, out MonsterStatProfile profile)
+        {
+            profile = new MonsterStatProfile(
+                monsterId,
+                "Enemy",
+                new CharacterStatBlock(24, 4, 0, 100, 0.0, 1.5),
+                InputsPerRound: 18,
+                MoveCategory: "normal",
+                IsBoss: false);
+
             if (!TryGetMonster(monsterId, out var monster))
             {
                 return false;
             }
 
-            monsterName = GetString(monster, "monster_name", monsterName);
-            if (!TryGetChildDictionary(monster, "combat", out var combat))
+            string monsterName = GetString(monster, "monster_name", profile.DisplayName);
+            string moveCategory = GetString(monster, "move_category", "");
+            if (string.IsNullOrEmpty(moveCategory))
             {
-                return true;
+                moveCategory = GetString(monster, "rarity", "normal");
             }
 
-            hp = Math.Max(1, combat.ContainsKey("hp") ? combat["hp"].AsInt32() : hp);
-            inputsPerRound = Math.Max(1, combat.ContainsKey("inputs_per_round") ? combat["inputs_per_round"].AsInt32() : inputsPerRound);
-            attack = Math.Max(1, combat.ContainsKey("attack") ? combat["attack"].AsInt32() : attack);
+            int hp = profile.BaseStats.MaxHp;
+            int attack = profile.BaseStats.Attack;
+            int defense = profile.BaseStats.Defense;
+            double speedFactor = 1.0;
+            int inputsPerRound = profile.InputsPerRound;
+            if (TryGetChildDictionary(monster, "combat", out var combat))
+            {
+                hp = Math.Max(1, combat.ContainsKey("hp") ? combat["hp"].AsInt32() : hp);
+                attack = Math.Max(1, combat.ContainsKey("attack") ? combat["attack"].AsInt32() : attack);
+                defense = Math.Max(0, combat.ContainsKey("defense") ? combat["defense"].AsInt32() : defense);
+                speedFactor = combat.ContainsKey("speed_factor") ? combat["speed_factor"].AsDouble() : speedFactor;
+                inputsPerRound = Math.Max(1, combat.ContainsKey("inputs_per_round") ? combat["inputs_per_round"].AsInt32() : inputsPerRound);
+            }
+
+            string activeLevelId = ActiveLevelId;
+            bool isBoss = !string.IsNullOrEmpty(activeLevelId) && IsBossMonsterForLevel(activeLevelId, monsterId);
+            profile = MonsterStatRules.BuildProfile(monsterId, monsterName, hp, attack, defense, speedFactor, inputsPerRound, moveCategory, isBoss);
             return true;
         }
 
@@ -454,17 +505,14 @@ namespace Xiuxian.Scripts.Services
             int insightMin = settlement.ContainsKey("insight_min") ? settlement["insight_min"].AsInt32() : 0;
             int insightMax = settlement.ContainsKey("insight_max") ? settlement["insight_max"].AsInt32() : insightMin;
 
-            if (lingqiMax < lingqiMin)
-            {
-                lingqiMax = lingqiMin;
-            }
-            if (insightMax < insightMin)
-            {
-                insightMax = insightMin;
-            }
-
-            lingqi = _rng.RandiRange(lingqiMin, lingqiMax);
-            insight = _rng.RandiRange(insightMin, insightMax);
+            (int rolledLingqi, int rolledInsight) = BattleSettlementRules.RollReward(
+                lingqiMin,
+                lingqiMax,
+                insightMin,
+                insightMax,
+                (min, max) => _rng.RandiRange(min, max));
+            lingqi = rolledLingqi;
+            insight = rolledInsight;
             return true;
         }
 
@@ -793,11 +841,7 @@ namespace Xiuxian.Scripts.Services
             }
 
             _bossClearedLevelIds.Add(levelId);
-            string next = GetConfiguredNextLevelId(levelId);
-            if (string.IsNullOrEmpty(next))
-            {
-                next = GetNextLevelId(levelId);
-            }
+            string next = BossUnlockRules.ResolveNextUnlockedLevelId(GetConfiguredNextLevelId(levelId), GetNextLevelId(levelId));
 
             if (string.IsNullOrEmpty(next))
             {
@@ -1119,28 +1163,7 @@ namespace Xiuxian.Scripts.Services
         private string GetNextUnlockedLevelId(string levelId)
         {
             var unlocked = GetUnlockedLevelIds();
-            if (unlocked.Count <= 0)
-            {
-                return "";
-            }
-
-            int currentIndex = -1;
-            for (int i = 0; i < unlocked.Count; i++)
-            {
-                if (unlocked[i] == levelId)
-                {
-                    currentIndex = i;
-                    break;
-                }
-            }
-
-            if (currentIndex < 0)
-            {
-                return unlocked[0];
-            }
-
-            int next = (currentIndex + 1) % unlocked.Count;
-            return unlocked[next];
+            return LevelUnlockRules.GetNextUnlockedLevelId(unlocked, levelId);
         }
 
         private static string GetLevelBossMonsterId(Godot.Collections.Dictionary<string, Variant> level)
@@ -1225,28 +1248,17 @@ namespace Xiuxian.Scripts.Services
             }
 
             bool hasPityItem = result.ContainsKey(pityItemId) && result[pityItemId] > 0;
-            if (hasPityItem)
+            int current = _pityCounterByKey.TryGetValue(pityCounterKey, out int saved) ? saved : 0;
+            (int nextCounter, bool triggered, int addedQty) = LevelDropEconomyRules.ApplyPity(current, pityThreshold, hasPityItem, pityQty);
+            if (triggered)
             {
-                _pityCounterByKey[pityCounterKey] = 0;
-                _lastPityCounterKey = pityCounterKey;
-                _lastPityCounterValue = 0;
-                return;
-            }
-
-            int next = (_pityCounterByKey.TryGetValue(pityCounterKey, out int current) ? current : 0) + 1;
-            if (next >= pityThreshold)
-            {
-                AddDrop(result, pityItemId, Math.Max(1, pityQty));
-                _pityCounterByKey[pityCounterKey] = 0;
+                AddDrop(result, pityItemId, addedQty);
                 _lastPityTriggered = true;
-                _lastPityCounterKey = pityCounterKey;
-                _lastPityCounterValue = 0;
-                return;
             }
 
-            _pityCounterByKey[pityCounterKey] = next;
+            _pityCounterByKey[pityCounterKey] = nextCounter;
             _lastPityCounterKey = pityCounterKey;
-            _lastPityCounterValue = next;
+            _lastPityCounterValue = nextCounter;
         }
 
         private bool TryConsumeDropRoll(
@@ -1256,34 +1268,29 @@ namespace Xiuxian.Scripts.Services
         {
             hourlyCountAfterConsume = 0;
             long unix = (long)Time.GetUnixTimeFromSystem();
-            long dayIndex = unix / 86400;
-            long hourIndex = unix / 3600;
-
             int dailyCap = ReadDailyCap(table);
-            if (!_dailyRollDayByTable.TryGetValue(dropTableId, out long savedDay) || savedDay != dayIndex)
-            {
-                _dailyRollDayByTable[dropTableId] = dayIndex;
-                _dailyRollCountByTable[dropTableId] = 0;
-            }
-
+            bool hasSavedDay = _dailyRollDayByTable.TryGetValue(dropTableId, out long savedDay);
+            bool hasSavedHour = _hourlyRollHourByTable.TryGetValue(dropTableId, out long savedHour);
             int dailyCount = _dailyRollCountByTable.TryGetValue(dropTableId, out int d) ? d : 0;
-            if (dailyCap > 0 && dailyCount >= dailyCap)
-            {
-                _lastDailyCapBlocked = true;
-                return false;
-            }
-            _dailyRollCountByTable[dropTableId] = dailyCount + 1;
-
-            if (!_hourlyRollHourByTable.TryGetValue(dropTableId, out long savedHour) || savedHour != hourIndex)
-            {
-                _hourlyRollHourByTable[dropTableId] = hourIndex;
-                _hourlyRollCountByTable[dropTableId] = 0;
-            }
-
             int hourlyCount = _hourlyRollCountByTable.TryGetValue(dropTableId, out int h) ? h : 0;
-            hourlyCountAfterConsume = hourlyCount + 1;
-            _hourlyRollCountByTable[dropTableId] = hourlyCountAfterConsume;
-            return true;
+
+            var result = LevelDropEconomyRules.ConsumeDropRoll(
+                dailyCount,
+                savedDay,
+                dailyCap,
+                hourlyCount,
+                savedHour,
+                unix,
+                hasSavedDay,
+                hasSavedHour);
+
+            _dailyRollCountByTable[dropTableId] = result.DailyCount;
+            _dailyRollDayByTable[dropTableId] = result.DayIndex;
+            _hourlyRollCountByTable[dropTableId] = result.HourlyCount;
+            _hourlyRollHourByTable[dropTableId] = result.HourIndex;
+            hourlyCountAfterConsume = result.HourlyCountAfterConsume;
+            _lastDailyCapBlocked = result.DailyCapBlocked;
+            return result.Allowed;
         }
 
         private bool ShouldSkipDropBySoftCap(Godot.Collections.Dictionary<string, Variant> table, int hourlyCountAfterConsume)
@@ -1295,14 +1302,7 @@ namespace Xiuxian.Scripts.Services
             }
 
             double decay = ReadRepeatDecay(table);
-            if (decay <= 0.0)
-            {
-                return true;
-            }
-
-            int overflow = hourlyCountAfterConsume - softCap;
-            double allowChance = Math.Pow(Math.Min(1.0, decay), overflow);
-            bool skipped = _rng.Randf() > allowChance;
+            bool skipped = LevelDropEconomyRules.ShouldSkipDropBySoftCap(softCap, decay, hourlyCountAfterConsume, _rng.Randf());
             if (skipped)
             {
                 _lastSoftCapSkipped = true;
@@ -1436,70 +1436,54 @@ namespace Xiuxian.Scripts.Services
         private string ResolveDropTableForActiveLevel(string monsterId, string configuredDropTableId)
         {
             string levelId = ActiveLevelId;
-            if (!string.IsNullOrEmpty(configuredDropTableId)
+            bool configuredTableValidForLevel = !string.IsNullOrEmpty(configuredDropTableId)
                 && TryGetDropTable(configuredDropTableId, out var configuredTable)
-                && IsTableBoundToLevel(configuredTable, levelId))
-            {
-                return configuredDropTableId;
-            }
+                && IsTableBoundToLevel(configuredTable, levelId);
 
+            var candidates = new List<(string DropTableId, bool LevelMatch, bool MonsterMatch)>();
             foreach (var kv in _dropTableById)
             {
                 var table = kv.Value;
-                if (!IsTableBoundToLevel(table, levelId))
-                {
-                    continue;
-                }
-                if (!IsTableBoundToMonster(table, monsterId))
-                {
-                    continue;
-                }
-
-                return kv.Key;
+                candidates.Add((
+                    kv.Key,
+                    IsTableBoundToLevel(table, levelId),
+                    IsTableBoundToMonster(table, monsterId)));
             }
 
-            return configuredDropTableId;
+            return DropTableBindingRules.ResolveDropTableForActiveLevel(levelId, monsterId, configuredDropTableId, configuredTableValidForLevel, candidates);
         }
 
         private static bool IsTableBoundToLevel(Godot.Collections.Dictionary<string, Variant> table, string levelId)
         {
             string boundLevelId = GetString(table, "bind_level_id", "");
-            if (string.IsNullOrEmpty(boundLevelId) || string.IsNullOrEmpty(levelId))
-            {
-                return true;
-            }
-
-            return boundLevelId == levelId;
+            return DropTableBindingRules.IsTableBoundToLevel(boundLevelId, levelId);
         }
 
         private static bool IsTableBoundToMonster(Godot.Collections.Dictionary<string, Variant> table, string monsterId)
         {
-            if (string.IsNullOrEmpty(monsterId))
-            {
-                return false;
-            }
-
             if (!table.ContainsKey("bind_monster_ids"))
             {
-                return true;
+                return DropTableBindingRules.IsTableBoundToMonster(System.Array.Empty<string>(), monsterId);
             }
 
             Variant bindVariant = table["bind_monster_ids"];
             if (bindVariant.VariantType != Variant.Type.Array)
             {
-                return true;
+                return DropTableBindingRules.IsTableBoundToMonster(System.Array.Empty<string>(), monsterId);
             }
 
             var bindArray = (Godot.Collections.Array<Variant>)bindVariant;
+            var boundMonsterIds = new List<string>();
             foreach (Variant item in bindArray)
             {
-                if (item.AsString() == monsterId)
+                string id = item.AsString();
+                if (!string.IsNullOrEmpty(id))
                 {
-                    return true;
+                    boundMonsterIds.Add(id);
                 }
             }
 
-            return false;
+            return DropTableBindingRules.IsTableBoundToMonster(boundMonsterIds, monsterId);
         }
 
         private static Godot.Collections.Dictionary<string, Variant> IntDictionaryToVariantDictionary(Dictionary<string, int> source)

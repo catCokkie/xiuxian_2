@@ -1,6 +1,8 @@
-﻿using Godot;
+using Godot;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
+using Xiuxian.Scripts.Game;
 using Xiuxian.Scripts.Services;
 
 public partial class BookTabsController : Control
@@ -11,13 +13,13 @@ public partial class BookTabsController : Control
     private readonly Dictionary<string, string> _leftTabContentMap = new()
     {
         { "CultivationTab", UiText.CultivationTemplate },
+        { "BattleLogTab", UiText.BattleLogEmpty },
         { "EquipmentTab", UiText.EquipmentTemplate },
         { "StatsTab", UiText.StatsTemplate },
     };
 
     private readonly Dictionary<string, string> _rightTabContentMap = new()
     {
-        { "OnlineTab", UiText.OnlineTemplate },
         { "BugTab", UiText.BugTemplate },
         { "SettingsTab", UiText.SettingsTitle },
     };
@@ -34,6 +36,8 @@ public partial class BookTabsController : Control
     private VBoxContainer _settingsDisplayRoot = null!;
     private VBoxContainer _settingsProgressRoot = null!;
     private VBoxContainer _settingsActionRoot = null!;
+    private VBoxContainer _bugFeedbackRoot = null!;
+    private VBoxContainer _equipmentRoot = null!;
     private Button _settingsSystemBtn = null!;
     private Button _settingsDisplayBtn = null!;
     private Button _settingsProgressBtn = null!;
@@ -41,9 +45,6 @@ public partial class BookTabsController : Control
     private OptionButton _languageOption = null!;
     private CheckButton _keepOnTopCheck = null!;
     private CheckButton _taskbarIconCheck = null!;
-    private CheckButton _startupAnimCheck = null!;
-    private CheckButton _adminModeCheck = null!;
-    private CheckButton _handwritingCheck = null!;
     private CheckButton _vsyncCheck = null!;
     private OptionButton _fpsOption = null!;
 
@@ -57,15 +58,21 @@ public partial class BookTabsController : Control
     private CheckButton _cloudSyncCheck = null!;
     private CheckButton _milestoneTipsCheck = null!;
     private CheckButton _globalDebugOverlayCheck = null!;
+    private TextEdit _bugFeedbackInput = null!;
+    private Label _bugFeedbackStatusLabel = null!;
+    private RichTextLabel _equipmentContentLabel = null!;
 
     private Tween? _leftTween;
     private InputActivityState? _activityState;
     private BackpackState? _backpackState;
     private ResourceWalletState? _resourceWalletState;
     private PlayerProgressState? _playerProgressState;
+    private EquippedItemsState? _equippedItemsState;
+    private LevelConfigLoader? _levelConfigLoader;
+    private ExploreProgressController? _exploreProgressController;
 
     public string ActiveLeftTabName { get; private set; } = "CultivationTab";
-    public string ActiveRightTabName { get; private set; } = "OnlineTab";
+    public string ActiveRightTabName { get; private set; } = "BugTab";
     private bool _isShowingRightTab;
 
     private string _activeSettingsSection = "system";
@@ -105,6 +112,9 @@ public partial class BookTabsController : Control
         _backpackState = GetNodeOrNull<BackpackState>("/root/BackpackState");
         _resourceWalletState = GetNodeOrNull<ResourceWalletState>("/root/ResourceWalletState");
         _playerProgressState = GetNodeOrNull<PlayerProgressState>("/root/PlayerProgressState");
+        _equippedItemsState = GetNodeOrNull<EquippedItemsState>("/root/EquippedItemsState");
+        _levelConfigLoader = GetNodeOrNull<LevelConfigLoader>("/root/LevelConfigLoader");
+        _exploreProgressController = GetNodeOrNull<ExploreProgressController>("../../ExploreProgressController");
 
         if (_activityState != null)
         {
@@ -113,6 +123,7 @@ public partial class BookTabsController : Control
         if (_backpackState != null)
         {
             _backpackState.InventoryChanged += OnInventoryChanged;
+            _backpackState.EquipmentInventoryChanged += OnEquipmentInventoryChanged;
         }
         if (_resourceWalletState != null)
         {
@@ -121,6 +132,10 @@ public partial class BookTabsController : Control
         if (_playerProgressState != null)
         {
             _playerProgressState.RealmProgressChanged += OnRealmProgressChanged;
+        }
+        if (_equippedItemsState != null)
+        {
+            _equippedItemsState.EquippedItemsChanged += OnEquippedItemsChanged;
         }
 
         ApplyStaticTexts();
@@ -147,6 +162,7 @@ public partial class BookTabsController : Control
         if (_backpackState != null)
         {
             _backpackState.InventoryChanged -= OnInventoryChanged;
+            _backpackState.EquipmentInventoryChanged -= OnEquipmentInventoryChanged;
         }
         if (_resourceWalletState != null)
         {
@@ -155,6 +171,10 @@ public partial class BookTabsController : Control
         if (_playerProgressState != null)
         {
             _playerProgressState.RealmProgressChanged -= OnRealmProgressChanged;
+        }
+        if (_equippedItemsState != null)
+        {
+            _equippedItemsState.EquippedItemsChanged -= OnEquippedItemsChanged;
         }
     }
 
@@ -172,7 +192,7 @@ public partial class BookTabsController : Control
 
         if (!_rightTabContentMap.ContainsKey(rightTabName))
         {
-            rightTabName = "OnlineTab";
+            rightTabName = "BugTab";
         }
 
         ActiveLeftTabName = leftTabName;
@@ -213,7 +233,7 @@ public partial class BookTabsController : Control
         // Leaving settings/right-page mode should immediately return to left tabs.
         if (ActiveRightTabName == "SettingsTab")
         {
-            ActiveRightTabName = "OnlineTab";
+            ActiveRightTabName = "BugTab";
         }
 
         ActiveLeftTabName = tabName;
@@ -234,6 +254,11 @@ public partial class BookTabsController : Control
         RefreshDynamicTabContent();
     }
 
+    private void OnEquipmentInventoryChanged()
+    {
+        RefreshDynamicTabContent();
+    }
+
     private void OnWalletChanged(double lingqi, double insight, double petAffinity)
     {
         RefreshCoinLabel();
@@ -245,6 +270,11 @@ public partial class BookTabsController : Control
         RefreshDynamicTabContent();
     }
 
+    private void OnEquippedItemsChanged()
+    {
+        RefreshDynamicTabContent();
+    }
+
     private void RefreshDynamicTabContent()
     {
         if (ActiveRightTabName == "SettingsTab")
@@ -252,9 +282,17 @@ public partial class BookTabsController : Control
             return;
         }
 
-        if (!_isShowingRightTab && (ActiveLeftTabName == "CultivationTab" || ActiveLeftTabName == "StatsTab"))
+        if (!_isShowingRightTab && (ActiveLeftTabName == "CultivationTab" || ActiveLeftTabName == "StatsTab" || ActiveLeftTabName == "BattleLogTab" || ActiveLeftTabName == "EquipmentTab"))
         {
-            _leftContentLabel.Text = GetLeftTabContent(ActiveLeftTabName);
+            string content = GetLeftTabContent(ActiveLeftTabName);
+            if (ActiveLeftTabName == "EquipmentTab")
+            {
+                _equipmentContentLabel.Text = content;
+            }
+            else
+            {
+                _leftContentLabel.Text = content;
+            }
         }
     }
 
@@ -263,9 +301,105 @@ public partial class BookTabsController : Control
         return tabName switch
         {
             "CultivationTab" => BuildCultivationOverviewText(),
+            "BattleLogTab" => BuildBattleLogText(),
+            "EquipmentTab" => BuildEquipmentOverviewText(),
             "StatsTab" => BuildStatsOverviewText(),
             _ => _leftTabContentMap[tabName]
         };
+    }
+
+    private string BuildEquipmentOverviewText()
+    {
+        if (_playerProgressState == null || _levelConfigLoader == null || _equippedItemsState == null || _backpackState == null)
+        {
+            return _leftTabContentMap["EquipmentTab"];
+        }
+
+        EquipmentStatProfile[] equippedProfiles = _equippedItemsState.GetEquippedProfiles();
+        if (equippedProfiles.Length == 0)
+        {
+            return UiText.EquipmentEmpty;
+        }
+
+        CharacterStatBlock baseStats = PlayerBaseStatRules.BuildBaseStats(
+            _playerProgressState.RealmLevel,
+            _levelConfigLoader.PlayerBaseHp,
+            _levelConfigLoader.PlayerAttackPerRound);
+        CharacterStatBlock finalStats = CharacterStatRules.BuildFinalStats(baseStats, equippedProfiles);
+
+        StringBuilder sb = new();
+        sb.AppendLine(UiText.LeftTabEquipment);
+        sb.AppendLine($"当前已装备 {equippedProfiles.Length} 件");
+        sb.AppendLine($"基础属性：HP {baseStats.MaxHp} / 攻 {baseStats.Attack} / 防 {baseStats.Defense}");
+        sb.AppendLine($"装备后：HP {finalStats.MaxHp} / 攻 {finalStats.Attack} / 防 {finalStats.Defense}");
+
+        foreach (EquipmentStatProfile profile in equippedProfiles)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"[{BuildSlotLabel(profile.Slot)}] {profile.DisplayName}");
+            sb.AppendLine(BuildModifierSummary(profile.Modifier));
+        }
+
+        EquipmentStatProfile[] backpackProfiles = _backpackState.GetEquipmentProfiles();
+        sb.AppendLine();
+        sb.AppendLine($"背包装备 {backpackProfiles.Length} 件");
+        foreach (EquipmentStatProfile profile in backpackProfiles)
+        {
+            sb.AppendLine($"- [{BuildSlotLabel(profile.Slot)}] {profile.DisplayName} | {BuildModifierSummary(profile.Modifier)}");
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string BuildSlotLabel(EquipmentSlotType slot)
+    {
+        return slot switch
+        {
+            EquipmentSlotType.Weapon => "武器",
+            EquipmentSlotType.Armor => "护具",
+            EquipmentSlotType.Accessory => "饰品",
+            _ => "装备"
+        };
+    }
+
+    private static string BuildModifierSummary(CharacterStatModifier modifier)
+    {
+        List<string> parts = new();
+        if (modifier.MaxHpFlat != 0) parts.Add($"HP+{modifier.MaxHpFlat}");
+        if (modifier.AttackFlat != 0) parts.Add($"攻击+{modifier.AttackFlat}");
+        if (modifier.DefenseFlat != 0) parts.Add($"防御+{modifier.DefenseFlat}");
+        if (modifier.SpeedFlat != 0) parts.Add($"速度+{modifier.SpeedFlat}");
+        if (modifier.CritChanceDelta != 0.0) parts.Add($"暴击+{modifier.CritChanceDelta:P0}");
+        if (modifier.CritDamageDelta != 0.0) parts.Add($"暴伤+{modifier.CritDamageDelta:0.##}");
+        return parts.Count > 0 ? string.Join(" | ", parts) : "当前无额外词条";
+    }
+
+    private void EquipFromBackpack(EquipmentSlotType slot)
+    {
+        if (_equippedItemsState == null || _backpackState == null)
+        {
+            return;
+        }
+
+        if (!_backpackState.TryTakeEquipmentBySlot(slot, out EquipmentStatProfile nextProfile))
+        {
+            return;
+        }
+
+        if (_equippedItemsState.TryEquipReplacing(nextProfile, out EquipmentStatProfile replacedProfile))
+        {
+            _backpackState.AddEquipment(replacedProfile with { IsEquipped = false });
+        }
+    }
+
+    private string BuildBattleLogText()
+    {
+        if (_exploreProgressController == null)
+        {
+            return UiText.BattleLogEmpty;
+        }
+
+        return _exploreProgressController.BuildRecentBattleLogText();
     }
 
     private string BuildCultivationOverviewText()
@@ -286,8 +420,7 @@ public partial class BookTabsController : Control
                 expPercent,
                 _resourceWalletState.Lingqi,
                 _resourceWalletState.Insight,
-                _resourceWalletState.PetAffinity,
-                _playerProgressState.GetMoodMultiplier());
+                _resourceWalletState.PetAffinity);
     }
 
     private string BuildStatsOverviewText()
@@ -337,6 +470,9 @@ public partial class BookTabsController : Control
 
     private void BuildSettingsUi()
     {
+        BuildEquipmentUi();
+        BuildBugFeedbackUi();
+
         _settingsNavRoot = new HBoxContainer();
         _settingsNavRoot.Name = "SettingsNavRoot";
         _settingsNavRoot.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -380,6 +516,93 @@ public partial class BookTabsController : Control
         BuildProgressSection(_settingsProgressRoot);
     }
 
+    private void BuildEquipmentUi()
+    {
+        _equipmentRoot = new VBoxContainer();
+        _equipmentRoot.Name = "EquipmentRoot";
+        _equipmentRoot.SetAnchorsPreset(LayoutPreset.FullRect);
+        _equipmentRoot.OffsetLeft = 20.0f;
+        _equipmentRoot.OffsetTop = 42.0f;
+        _equipmentRoot.OffsetRight = -20.0f;
+        _equipmentRoot.OffsetBottom = -18.0f;
+        _equipmentRoot.AddThemeConstantOverride("separation", 10);
+        _leftPage.AddChild(_equipmentRoot);
+
+        HBoxContainer actionRow = new();
+        actionRow.AddThemeConstantOverride("separation", 8);
+        _equipmentRoot.AddChild(actionRow);
+
+        Button equipWeaponButton = new();
+        equipWeaponButton.Text = "装备背包武器";
+        equipWeaponButton.Pressed += () => EquipFromBackpack(EquipmentSlotType.Weapon);
+        actionRow.AddChild(equipWeaponButton);
+
+        Button equipArmorButton = new();
+        equipArmorButton.Text = "装备背包护具";
+        equipArmorButton.Pressed += () => EquipFromBackpack(EquipmentSlotType.Armor);
+        actionRow.AddChild(equipArmorButton);
+
+        Label hint = new();
+        hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        hint.Text = "新获得的装备会先进入背包，不会自动替换当前已装备物品。点击上方按钮后，才会把对应槽位旧装备换回背包。";
+        _equipmentRoot.AddChild(hint);
+
+        _equipmentContentLabel = new RichTextLabel();
+        _equipmentContentLabel.FitContent = false;
+        _equipmentContentLabel.ScrollActive = true;
+        _equipmentContentLabel.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        _equipmentRoot.AddChild(_equipmentContentLabel);
+    }
+
+    private void BuildBugFeedbackUi()
+    {
+        _bugFeedbackRoot = new VBoxContainer();
+        _bugFeedbackRoot.Name = "BugFeedbackRoot";
+        _bugFeedbackRoot.SetAnchorsPreset(LayoutPreset.FullRect);
+        _bugFeedbackRoot.OffsetLeft = 20.0f;
+        _bugFeedbackRoot.OffsetTop = 42.0f;
+        _bugFeedbackRoot.OffsetRight = -20.0f;
+        _bugFeedbackRoot.OffsetBottom = -18.0f;
+        _bugFeedbackRoot.AddThemeConstantOverride("separation", 10);
+        _leftPage.AddChild(_bugFeedbackRoot);
+
+        RichTextLabel hint = new();
+        hint.FitContent = true;
+        hint.ScrollActive = false;
+        hint.Text = UiText.BugFeedbackHint;
+        _bugFeedbackRoot.AddChild(hint);
+
+        _bugFeedbackInput = new TextEdit();
+        _bugFeedbackInput.CustomMinimumSize = new Vector2(0.0f, 180.0f);
+        _bugFeedbackInput.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        _bugFeedbackInput.PlaceholderText = UiText.BugFeedbackInputPlaceholder;
+        _bugFeedbackRoot.AddChild(_bugFeedbackInput);
+
+        HBoxContainer actionRow = new();
+        actionRow.AddThemeConstantOverride("separation", 8);
+        _bugFeedbackRoot.AddChild(actionRow);
+
+        Button copyButton = new();
+        copyButton.Text = UiText.CopyLogPath;
+        copyButton.Pressed += CopyLogFolderPath;
+        actionRow.AddChild(copyButton);
+
+        Button exportButton = new();
+        exportButton.Text = UiText.ExportFeedbackPack;
+        exportButton.Pressed += ExportFeedbackPack;
+        actionRow.AddChild(exportButton);
+
+        Button openButton = new();
+        openButton.Text = UiText.OpenDataFolder;
+        openButton.Pressed += OpenLogFolder;
+        actionRow.AddChild(openButton);
+
+        _bugFeedbackStatusLabel = new Label();
+        _bugFeedbackStatusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _bugFeedbackStatusLabel.Text = ProjectSettings.GlobalizePath("user://");
+        _bugFeedbackRoot.AddChild(_bugFeedbackStatusLabel);
+    }
+
     private Button CreateSettingsSectionButton(string title, string sectionId)
     {
         Button button = new();
@@ -408,19 +631,13 @@ public partial class BookTabsController : Control
     {
         _languageOption = AddOptionRow(root, UiText.Language, new[] { "简体中文", "English" });
         _keepOnTopCheck = AddCheckRow(root, UiText.KeepOnTop);
-        _taskbarIconCheck = AddCheckRow(root, UiText.TaskbarIcon);
-        _startupAnimCheck = AddCheckRow(root, UiText.StartupAnimation);
-        _adminModeCheck = AddCheckRow(root, UiText.AdminMode);
-        _handwritingCheck = AddCheckRow(root, UiText.HandwritingSupport);
+        _taskbarIconCheck = AddCheckRow(root, UiText.ReservedLabel(UiText.TaskbarIcon));
         _vsyncCheck = AddCheckRow(root, UiText.Vsync);
         _fpsOption = AddOptionRow(root, UiText.MaxFps, new[] { "30", "60", "120", "不限" });
 
         _languageOption.ItemSelected += _ => OnLanguageChanged();
         _keepOnTopCheck.Toggled += value => OnSettingChanged("keep_on_top", value, applyNow: true);
         _taskbarIconCheck.Toggled += value => OnSettingChanged("taskbar_icon", value);
-        _startupAnimCheck.Toggled += value => OnSettingChanged("startup_animation", value);
-        _adminModeCheck.Toggled += value => OnSettingChanged("admin_mode", value);
-        _handwritingCheck.Toggled += value => OnSettingChanged("handwriting_support", value);
         _vsyncCheck.Toggled += value => OnSettingChanged("vsync", value, applyNow: true);
         _fpsOption.ItemSelected += _ => OnFpsChanged();
     }
@@ -443,7 +660,7 @@ public partial class BookTabsController : Control
         _openLogFolderButton.Pressed += OpenLogFolder;
         logRow.AddChild(_openLogFolderButton);
 
-        _gameScaleOption = AddOptionRow(root, UiText.GameScale, new[] { "1.00", "1.10", "1.25", "1.33", "1.50" });
+        _gameScaleOption = AddOptionRow(root, UiText.ExperimentalLabel(UiText.GameScale), new[] { "1.00", "1.10", "1.25", "1.33", "1.50" });
         _uiScaleOption = AddOptionRow(root, UiText.UiScale, new[] { "1.00", "1.10", "1.25", "1.33", "1.50" });
 
         _resolutionOption.ItemSelected += _ => OnResolutionChanged();
@@ -456,8 +673,8 @@ public partial class BookTabsController : Control
     private void BuildProgressSection(VBoxContainer root)
     {
         _autoSaveIntervalOption = AddOptionRow(root, UiText.AutoSaveInterval, new[] { "5 秒", "10 秒", "30 秒", "60 秒" });
-        _cloudSyncCheck = AddCheckRow(root, UiText.CloudSync);
-        _milestoneTipsCheck = AddCheckRow(root, UiText.MilestoneTips);
+        _cloudSyncCheck = AddCheckRow(root, UiText.ReservedLabel(UiText.CloudSync));
+        _milestoneTipsCheck = AddCheckRow(root, UiText.ExperimentalLabel(UiText.MilestoneTips));
         _globalDebugOverlayCheck = AddCheckRow(root, UiText.GlobalDebugOverlay);
 
         RichTextLabel hint = new();
@@ -525,12 +742,16 @@ public partial class BookTabsController : Control
     private void UpdateSettingsUiVisibility()
     {
         bool isSettings = ActiveRightTabName == "SettingsTab";
+        bool isBug = ActiveRightTabName == "BugTab";
+        bool isEquipment = !_isShowingRightTab && ActiveLeftTabName == "EquipmentTab";
         _settingsNavRoot.Visible = isSettings;
         _settingsActionRoot.Visible = isSettings;
         _settingsSystemRoot.Visible = isSettings && _activeSettingsSection == "system";
         _settingsDisplayRoot.Visible = isSettings && _activeSettingsSection == "display";
         _settingsProgressRoot.Visible = isSettings && _activeSettingsSection == "progress";
-        _leftContentLabel.Visible = !isSettings;
+        _bugFeedbackRoot.Visible = isBug;
+        _equipmentRoot.Visible = isEquipment;
+        _leftContentLabel.Visible = !isSettings && !isBug && !isEquipment;
         _rightPage.Visible = false;
     }
 
@@ -541,9 +762,6 @@ public partial class BookTabsController : Control
         _languageOption.Selected = _settings["language"].AsString() == "en-US" ? 1 : 0;
         _keepOnTopCheck.ButtonPressed = _settings["keep_on_top"].AsBool();
         _taskbarIconCheck.ButtonPressed = _settings["taskbar_icon"].AsBool();
-        _startupAnimCheck.ButtonPressed = _settings["startup_animation"].AsBool();
-        _adminModeCheck.ButtonPressed = _settings["admin_mode"].AsBool();
-        _handwritingCheck.ButtonPressed = _settings["handwriting_support"].AsBool();
         _vsyncCheck.ButtonPressed = _settings["vsync"].AsBool();
         _showControlMarkerCheck.ButtonPressed = _settings["show_control_markers"].AsBool();
         _showValidationPanelCheck.ButtonPressed = _settings["show_validation_panel"].AsBool();
@@ -696,6 +914,49 @@ public partial class BookTabsController : Control
         OS.ShellOpen(path);
     }
 
+    private void CopyLogFolderPath()
+    {
+        string path = ProjectSettings.GlobalizePath("user://");
+        DisplayServer.ClipboardSet(path);
+        _bugFeedbackStatusLabel.Text = UiText.BugFeedbackCopied;
+    }
+
+    private void ExportFeedbackPack()
+    {
+        string description = _bugFeedbackInput.Text.Trim();
+        if (string.IsNullOrEmpty(description))
+        {
+            _bugFeedbackStatusLabel.Text = UiText.BugFeedbackEmptyWarning;
+            return;
+        }
+
+        string feedbackDir = "user://feedback";
+        DirAccess.MakeDirRecursiveAbsolute(ProjectSettings.GlobalizePath(feedbackDir));
+        long timestamp = (long)Time.GetUnixTimeFromSystem();
+        string filePath = $"{feedbackDir}/feedback_{timestamp}.txt";
+
+        using FileAccess? file = FileAccess.Open(filePath, FileAccess.ModeFlags.Write);
+        if (file == null)
+        {
+            _bugFeedbackStatusLabel.Text = UiText.BugFeedbackExportFailed;
+            return;
+        }
+
+        StringBuilder sb = new();
+        sb.AppendLine("# Xiuxian Demo Feedback");
+        sb.AppendLine($"timestamp_unix={timestamp}");
+        sb.AppendLine($"left_tab={ActiveLeftTabName}");
+        sb.AppendLine($"right_tab={ActiveRightTabName}");
+        sb.AppendLine($"data_dir={ProjectSettings.GlobalizePath("user://")}");
+        sb.AppendLine($"save_file={ProjectSettings.GlobalizePath("user://save_state.cfg")}");
+        sb.AppendLine();
+        sb.AppendLine("[description]");
+        sb.AppendLine(description);
+        file.StoreString(sb.ToString());
+
+        _bugFeedbackStatusLabel.Text = UiText.BugFeedbackExportedPrefix + ProjectSettings.GlobalizePath(filePath);
+    }
+
     private void ApplySettingsRuntime()
     {
         bool keepOnTop = _settings["keep_on_top"].AsBool();
@@ -745,11 +1006,22 @@ public partial class BookTabsController : Control
         if (_isShowingRightTab)
         {
             _leftTitleLabel.Text = ButtonTextForTab("TopStrip/RightTabs", ActiveRightTabName);
+            if (ActiveRightTabName == "BugTab")
+            {
+                UpdateSettingsUiVisibility();
+                return;
+            }
             AnimateContentSwap(_leftContentLabel, _leftTween, _rightTabContentMap[ActiveRightTabName], tween => _leftTween = tween, false);
             return;
         }
 
         _leftTitleLabel.Text = ButtonTextForTab("TopStrip/LeftTabs", ActiveLeftTabName);
+        if (ActiveLeftTabName == "EquipmentTab")
+        {
+            _equipmentContentLabel.Text = GetLeftTabContent(ActiveLeftTabName);
+            UpdateSettingsUiVisibility();
+            return;
+        }
         AnimateContentSwap(_leftContentLabel, _leftTween, GetLeftTabContent(ActiveLeftTabName), tween => _leftTween = tween, true);
     }
 
@@ -764,9 +1036,9 @@ public partial class BookTabsController : Control
     private void ApplyStaticTexts()
     {
         SetButtonText("TopStrip/LeftTabs/CultivationTab", UiText.LeftTabCultivation);
+        SetButtonText("TopStrip/LeftTabs/BattleLogTab", UiText.LeftTabBattleLog);
         SetButtonText("TopStrip/LeftTabs/EquipmentTab", UiText.LeftTabEquipment);
         SetButtonText("TopStrip/LeftTabs/StatsTab", UiText.LeftTabStats);
-        SetButtonText("TopStrip/RightTabs/OnlineTab", UiText.RightTabOnline);
         SetButtonText("TopStrip/RightTabs/BugTab", UiText.RightTabBug);
         SetButtonText("TopStrip/RightTabs/SettingsTab", UiText.RightTabSettings);
         _closeButton.Text = "X";
@@ -851,5 +1123,3 @@ public partial class BookTabsController : Control
         storeTween(outTween);
     }
 }
-
-

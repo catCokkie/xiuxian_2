@@ -93,6 +93,11 @@ toggle_mode = true
 button_pressed = true
 text = "修炼概况"
 
+[node name="BattleLogTab" type="Button" parent="BookFrame/TopStrip/LeftTabs"]
+layout_mode = 2
+toggle_mode = true
+text = "战斗日志"
+
 [node name="EquipmentTab" type="Button" parent="BookFrame/TopStrip/LeftTabs"]
 layout_mode = 2
 toggle_mode = true
@@ -110,14 +115,15 @@ alignment = 2
 theme_override_constants/separation = 6
 
 [node name="OnlineTab" type="Button" parent="BookFrame/TopStrip/RightTabs"]
+visible = false
 layout_mode = 2
 toggle_mode = true
-button_pressed = true
 text = "联机"
 
 [node name="BugTab" type="Button" parent="BookFrame/TopStrip/RightTabs"]
 layout_mode = 2
 toggle_mode = true
+button_pressed = true
 text = "Bug反馈"
 
 [node name="SettingsTab" type="Button" parent="BookFrame/TopStrip/RightTabs"]
@@ -203,7 +209,7 @@ grow_horizontal = 2
 grow_vertical = 2
 bbcode_enabled = true
 fit_content = true
-text = "联机"
+text = "Bug反馈"
 
 [node name="BottomBar" type="Panel" parent="BookFrame"]
 layout_mode = 0

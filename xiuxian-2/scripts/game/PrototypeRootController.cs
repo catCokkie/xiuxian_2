@@ -25,6 +25,7 @@ namespace Xiuxian.Scripts.Game
         private ResourceWalletState? _resourceWalletState;
         private PlayerProgressState? _playerProgressState;
         private PlayerActionState? _playerActionState;
+        private EquippedItemsState? _equippedItemsState;
         private LevelConfigLoader? _levelConfigLoader;
         private ExploreProgressController? _exploreProgressController;
         private CloudSaveSyncService? _cloudSaveSyncService;
@@ -47,6 +48,7 @@ namespace Xiuxian.Scripts.Game
             _resourceWalletState = GetNodeOrNull<ResourceWalletState>("/root/ResourceWalletState");
             _playerProgressState = GetNodeOrNull<PlayerProgressState>("/root/PlayerProgressState");
             _playerActionState = GetNodeOrNull<PlayerActionState>("/root/PlayerActionState");
+            _equippedItemsState = GetNodeOrNull<EquippedItemsState>("/root/EquippedItemsState");
             _levelConfigLoader = GetNodeOrNull<LevelConfigLoader>("/root/LevelConfigLoader");
             _exploreProgressController = GetNodeOrNull<ExploreProgressController>("ExploreProgressController");
             _cloudSaveSyncService = GetNodeOrNull<CloudSaveSyncService>("/root/CloudSaveSyncService");
@@ -182,6 +184,12 @@ namespace Xiuxian.Scripts.Game
             if (!loaded)
             {
                 LoadLegacyState();
+            }
+
+            EnsureStarterEquipmentLoadout();
+
+            if (!loaded)
+            {
                 SaveAllState();
             }
 
@@ -189,6 +197,21 @@ namespace Xiuxian.Scripts.Game
             _saveCooldown = SaveIntervalSeconds;
             _activitySaveMarkTimer = 0.0;
             RefreshRuntimeSettingsFromBookTabs();
+        }
+
+        private void EnsureStarterEquipmentLoadout()
+        {
+            if (_equippedItemsState == null)
+            {
+                return;
+            }
+
+            int beforeCount = _equippedItemsState.GetEquippedProfiles().Length;
+            _equippedItemsState.SeedIfEmpty(EquipmentStarterLoadout.CreateDefaultProfiles());
+            if (beforeCount == 0 && _equippedItemsState.GetEquippedProfiles().Length > 0)
+            {
+                MarkDirty();
+            }
         }
 
         private void SaveAllState()
@@ -204,6 +227,7 @@ namespace Xiuxian.Scripts.Game
             WriteResourceState(config);
             WritePlayerProgressState(config);
             WriteActionModeState(config);
+            WriteEquippedItemsState(config);
             WriteExploreRuntimeState(config);
             WriteLevelRuntimeState(config);
             WriteSystemSettings(config);
@@ -233,6 +257,7 @@ namespace Xiuxian.Scripts.Game
             ReadResourceState(config);
             ReadPlayerProgressState(config);
             ReadActionModeState(config);
+            ReadEquippedItemsState(config);
             ReadLevelRuntimeState(config);
             ReadExploreRuntimeState(config);
             ReadSystemSettings(config);
@@ -248,6 +273,7 @@ namespace Xiuxian.Scripts.Game
                     ReadResourceState(refreshed);
                     ReadPlayerProgressState(refreshed);
                     ReadActionModeState(refreshed);
+                    ReadEquippedItemsState(refreshed);
                     ReadLevelRuntimeState(refreshed);
                     ReadExploreRuntimeState(refreshed);
                     ReadSystemSettings(refreshed);
@@ -279,7 +305,7 @@ namespace Xiuxian.Scripts.Game
             _mainBar.ApplyLayout(mainBarX, mainBarWidth);
 
             string activeLeftTab = config.GetValue("ui", "submenu_active_left_tab", "CultivationTab").AsString();
-            string activeRightTab = config.GetValue("ui", "submenu_active_right_tab", "OnlineTab").AsString();
+            string activeRightTab = config.GetValue("ui", "submenu_active_right_tab", "BugTab").AsString();
 
             if (version < 2 || !config.HasSectionKey("ui", "submenu_active_left_tab"))
             {
@@ -430,6 +456,30 @@ namespace Xiuxian.Scripts.Game
             config.SetValue("action", "mode", _playerActionState.ToDictionary());
         }
 
+        private void ReadEquippedItemsState(ConfigFile config)
+        {
+            if (_equippedItemsState == null)
+            {
+                return;
+            }
+
+            Variant data = config.GetValue("equipment", "equipped", new Godot.Collections.Dictionary<string, Variant>());
+            if (data.VariantType == Variant.Type.Dictionary)
+            {
+                _equippedItemsState.FromDictionary((Godot.Collections.Dictionary<string, Variant>)data);
+            }
+        }
+
+        private void WriteEquippedItemsState(ConfigFile config)
+        {
+            if (_equippedItemsState == null)
+            {
+                return;
+            }
+
+            config.SetValue("equipment", "equipped", _equippedItemsState.ToDictionary());
+        }
+
         private void ReadExploreRuntimeState(ConfigFile config)
         {
             if (_exploreProgressController == null)
@@ -527,4 +577,3 @@ namespace Xiuxian.Scripts.Game
         }
     }
 }
-

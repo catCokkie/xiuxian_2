@@ -39,6 +39,7 @@ namespace Xiuxian.Scripts.Game
         [Export] public NodePath ActivityStatePath = "/root/InputActivityState";
         [Export] public NodePath BackpackStatePath = "/root/BackpackState";
         [Export] public NodePath PlayerProgressPath = "/root/PlayerProgressState";
+        [Export] public NodePath EquippedItemsStatePath = "/root/EquippedItemsState";
         [Export] public NodePath ResourceWalletPath = "/root/ResourceWalletState";
         [Export] public NodePath LevelConfigLoaderPath = "/root/LevelConfigLoader";
         [Export] public NodePath ActionStatePath = "/root/PlayerActionState";
@@ -85,6 +86,7 @@ namespace Xiuxian.Scripts.Game
         private InputActivityState? _activityState;
         private BackpackState? _backpackState;
         private PlayerProgressState? _playerProgressState;
+        private EquippedItemsState? _equippedItemsState;
         private ResourceWalletState? _resourceWalletState;
         private LevelConfigLoader? _levelConfigLoader;
         private PlayerActionState? _actionState;
@@ -126,7 +128,41 @@ namespace Xiuxian.Scripts.Game
         private string _lastSimulationSummary = "no simulation";
         private string _simulationLevelFilterId = "";
         private string _simulationMonsterFilterId = "";
+        private readonly List<BattleLogEntry> _recentBattleLogs = new();
         private static readonly string[] ValidationScopeFilters = { "all", "level", "monster", "drop_table", "config" };
+
+        private sealed class BattleLogEntry
+        {
+            public long TimestampUnix { get; init; }
+            public string ZoneName { get; init; } = "";
+            public string MonsterName { get; init; } = "";
+            public string BattleResult { get; init; } = "胜利";
+            public string RewardSummary { get; init; } = "无掉落";
+
+            public Godot.Collections.Dictionary<string, Variant> ToDictionary()
+            {
+                return new Godot.Collections.Dictionary<string, Variant>
+                {
+                    ["timestamp_unix"] = TimestampUnix,
+                    ["zone_name"] = ZoneName,
+                    ["monster_name"] = MonsterName,
+                    ["battle_result"] = BattleResult,
+                    ["reward_summary"] = RewardSummary,
+                };
+            }
+
+            public static BattleLogEntry FromDictionary(Godot.Collections.Dictionary<string, Variant> data)
+            {
+                return new BattleLogEntry
+                {
+                    TimestampUnix = data.ContainsKey("timestamp_unix") ? data["timestamp_unix"].AsInt64() : 0,
+                    ZoneName = data.ContainsKey("zone_name") ? data["zone_name"].AsString() : "",
+                    MonsterName = data.ContainsKey("monster_name") ? data["monster_name"].AsString() : "",
+                    BattleResult = data.ContainsKey("battle_result") ? data["battle_result"].AsString() : "胜利",
+                    RewardSummary = data.ContainsKey("reward_summary") ? data["reward_summary"].AsString() : "无掉落",
+                };
+            }
+        }
 
         public override void _Ready()
         {
@@ -165,6 +201,7 @@ namespace Xiuxian.Scripts.Game
             _activityState = GetNodeOrNull<InputActivityState>(ActivityStatePath);
             _backpackState = GetNodeOrNull<BackpackState>(BackpackStatePath);
             _playerProgressState = GetNodeOrNull<PlayerProgressState>(PlayerProgressPath);
+            _equippedItemsState = GetNodeOrNull<EquippedItemsState>(EquippedItemsStatePath);
             _resourceWalletState = GetNodeOrNull<ResourceWalletState>(ResourceWalletPath);
             _levelConfigLoader = GetNodeOrNull<LevelConfigLoader>(LevelConfigLoaderPath);
             _actionState = GetNodeOrNull<PlayerActionState>(ActionStatePath);
@@ -653,8 +690,13 @@ namespace Xiuxian.Scripts.Game
         private void AdvanceExploreByInput(int inputEvents)
         {
             // Core rule: explore progress is computed directly from input event count.
-            _exploreProgress = Mathf.Min(_exploreProgress + inputEvents * ProgressPerInput, MaxProgress);
-            _progressBar.Value = _exploreProgress;
+            (float nextProgress, bool completedLevel) = ExploreProgressRules.AdvanceProgress(
+                _exploreProgress,
+                inputEvents,
+                ProgressPerInput,
+                MaxProgress);
+            _exploreProgress = nextProgress;
+            _progressBar.Value = completedLevel ? 0.0f : _exploreProgress;
 
             int frames = MoveMonsterQueueByInputs(inputEvents);
             _moveFrameCounter += frames;
@@ -664,10 +706,8 @@ namespace Xiuxian.Scripts.Game
             _roundInfoLabel.Text = $"{UiText.ExploreProgress(_exploreProgress)} | {BuildFrontMoveStatus()}";
             RefreshMoveDebugLabel();
 
-            if (_exploreProgress >= MaxProgress)
+            if (completedLevel)
             {
-                _exploreProgress = 0.0f;
-                _progressBar.Value = 0.0f;
                 ApplyLevelCompletionRewards();
                 if (_levelConfigLoader != null && _levelConfigLoader.TryAdvanceToNextUnlockedLevel())
                 {
@@ -876,24 +916,17 @@ namespace Xiuxian.Scripts.Game
         private void TryStartBattle()
         {
             int candidate = FindFrontMonsterIndex();
-            if (candidate < 0)
-            {
-                return;
-            }
-
-            if (_monsterMarkers[candidate].Position.X > BattleTriggerX)
+            string monsterId = candidate >= 0 && candidate < _monsterMarkerIds.Count ? _monsterMarkerIds[candidate] : string.Empty;
+            float candidateX = candidate >= 0 ? _monsterMarkers[candidate].Position.X : float.MaxValue;
+            BattleEncounterDecision encounter = BattleStartRules.DetermineEncounterStart(candidate, candidateX, BattleTriggerX, monsterId);
+            if (!encounter.ShouldStart)
             {
                 return;
             }
 
             _inBattle = true;
-            _battleMonsterIndex = candidate;
-            _battleRoundCounter = 0;
-            _pendingBattleInputEvents = 0;
-            if (candidate >= 0 && candidate < _monsterMarkerIds.Count)
-            {
-                _battleMonsterId = _monsterMarkerIds[candidate];
-            }
+            _battleMonsterIndex = encounter.MonsterIndex;
+            _battleMonsterId = encounter.MonsterId;
             ConfigureBattleMonster();
             _battleInfoLabel.Text = UiText.Encounter(_battleMonsterName);
             _battleInfoLabel.Visible = true;
@@ -923,14 +956,14 @@ namespace Xiuxian.Scripts.Game
 
         private void AdvanceBattleByInput(int inputEvents)
         {
-            int threshold = Mathf.Max(1, _inputsPerBattleRoundRuntime);
-            _pendingBattleInputEvents += inputEvents;
-            int rounds = _pendingBattleInputEvents / threshold;
-            if (rounds <= 0)
+            BattleInputProgress progress = BattleRules.ConsumeBattleInputs(_pendingBattleInputEvents, inputEvents, _inputsPerBattleRoundRuntime);
+            int threshold = progress.Threshold;
+            _pendingBattleInputEvents = progress.RemainingInputs;
+            if (progress.RoundsToResolve <= 0)
             {
                 _battleInfoLabel.Text = UiText.BattleInProgress(_battleMonsterName);
                 _battleInfoLabel.Visible = true;
-                _roundInfoLabel.Text = $"蓄力 {_pendingBattleInputEvents}/{threshold} | {UiText.BattleRound(_battleRoundCounter, _battleMonsterName, _enemyHp)}";
+                _roundInfoLabel.Text = $"蓄力 {progress.PendingInputs}/{threshold} | {UiText.BattleRound(_battleRoundCounter, _battleMonsterName, _enemyHp)}";
                 UpdateHpLabels();
                 RefreshActorSlots();
                 RefreshMoveDebugLabel();
@@ -938,23 +971,37 @@ namespace Xiuxian.Scripts.Game
                 return;
             }
 
-            _pendingBattleInputEvents -= rounds * threshold;
-            for (int i = 0; i < rounds; i++)
+            for (int i = 0; i < progress.RoundsToResolve; i++)
             {
                 _battleRoundCounter++;
-                _enemyHp -= _playerAttackPerRoundRuntime;
-                int damageToPlayer = Mathf.Max(_enemyMinDamageRuntime, _enemyAttackPower / Mathf.Max(1, _enemyDamageDividerRuntime));
-                _playerHp = Mathf.Max(0, _playerHp - damageToPlayer);
+                CharacterStatBlock playerBaseStats = PlayerBaseStatRules.BuildBaseStats(
+                    _playerProgressState?.RealmLevel ?? 1,
+                    _levelConfigLoader?.PlayerBaseHp ?? _playerMaxHp,
+                    _levelConfigLoader?.PlayerAttackPerRound ?? _playerAttackPerRoundRuntime);
+                CharacterBattleSnapshot playerSnapshot = CharacterStatRules.CreatePlayerBattleSnapshot(
+                    playerBaseStats,
+                    _equippedItemsState?.GetEquippedProfiles() ?? System.Array.Empty<EquipmentStatProfile>(),
+                    _playerHp);
+                CharacterBattleSnapshot monsterSnapshot = new(_enemyMaxHp, _enemyHp, _enemyAttackPower, 0, 1, 0.0, 1.5);
+                BattleRoundResult roundResult = BattleRules.ResolvePlayerVsMonsterRound(
+                    playerSnapshot,
+                    monsterSnapshot,
+                    _enemyDamageDividerRuntime,
+                    _enemyMinDamageRuntime);
+                _enemyHp = roundResult.Monster.CurrentHp;
+                _playerHp = roundResult.Player.CurrentHp;
 
-                if (_playerHp <= 0)
+                BattleFlowDecision flowDecision = BattleRules.DetermineBattleFlow(roundResult.Outcome);
+                if (flowDecision.EndBattle)
                 {
-                    HandleBattleDefeat();
-                    return;
-                }
-
-                if (_enemyHp <= 0)
-                {
-                    CompleteBattle();
+                    if (flowDecision.Action == BattleFlowAction.Victory)
+                    {
+                        CompleteBattle();
+                    }
+                    else
+                    {
+                        HandleBattleDefeat();
+                    }
                     return;
                 }
             }
@@ -970,18 +1017,21 @@ namespace Xiuxian.Scripts.Game
 
         private void HandleBattleDefeat()
         {
+            BattleDefeatDecision defeat = BattleLifecycleRules.DetermineDefeatReset(_levelConfigLoader?.ActiveLevelId ?? "");
             _inBattle = false;
             _battleMonsterIndex = -1;
             _battleMonsterId = "";
             _battleRoundCounter = 0;
             _pendingBattleInputEvents = 0;
-            _exploreProgress = 0.0f;
-            _progressBar.Value = 0.0f;
-
-            string levelId = _levelConfigLoader?.ActiveLevelId ?? "";
-            if (_levelConfigLoader != null && !string.IsNullOrEmpty(levelId))
+            if (defeat.ShouldResetExploreProgress)
             {
-                _levelConfigLoader.TrySetActiveLevel(levelId);
+                _exploreProgress = 0.0f;
+                _progressBar.Value = 0.0f;
+            }
+
+            if (_levelConfigLoader != null && defeat.ShouldResetLevel)
+            {
+                _levelConfigLoader.TrySetActiveLevel(defeat.ActiveLevelId);
             }
 
             ApplyLevelConfig();
@@ -999,20 +1049,24 @@ namespace Xiuxian.Scripts.Game
 
         private void CompleteBattle()
         {
+            BattleVictoryDecision victory = BattleLifecycleRules.DetermineVictorySettlement(_levelConfigLoader?.ActiveLevelId ?? "", _battleMonsterId);
             _inBattle = false;
             _roundInfoLabel.Text = UiText.BattleRound(_battleRoundCounter, _battleMonsterName, 0);
             _battleInfoLabel.Text = UiText.BattleVictory(_battleMonsterName);
             _battleInfoLabel.Visible = true;
 
-            string activeLevelId = _levelConfigLoader?.ActiveLevelId ?? "";
             if (_levelConfigLoader != null &&
-                _levelConfigLoader.TryMarkBossDefeatedAndUnlockNext(activeLevelId, _battleMonsterId, out string unlockedLevelId) &&
+                victory.ShouldTryBossUnlock &&
+                _levelConfigLoader.TryMarkBossDefeatedAndUnlockNext(victory.ActiveLevelId, victory.MonsterId, out string unlockedLevelId) &&
                 !string.IsNullOrEmpty(unlockedLevelId))
             {
                 _battleInfoLabel.Text = $"{UiText.BattleVictory(_battleMonsterName)} | 已解锁 {unlockedLevelId}";
             }
 
-            ApplyBattleRewards();
+            if (victory.ShouldApplyBattleRewards)
+            {
+                ApplyBattleRewards();
+            }
 
             if (_battleMonsterIndex >= 0 && _battleMonsterIndex < _monsterMarkers.Count)
             {
@@ -1214,8 +1268,12 @@ namespace Xiuxian.Scripts.Game
 
             _currentZone = _levelConfigLoader.ActiveLevelName;
             ProgressPerInput = (float)(_levelConfigLoader.ProgressPer100Inputs / 100.0);
-            _playerMaxHp = Mathf.Max(1, _levelConfigLoader.PlayerBaseHp);
-            _playerAttackPerRoundRuntime = Mathf.Max(1, _levelConfigLoader.PlayerAttackPerRound);
+            CharacterStatBlock playerBaseStats = PlayerBaseStatRules.BuildBaseStats(
+                _playerProgressState?.RealmLevel ?? 1,
+                _levelConfigLoader.PlayerBaseHp,
+                _levelConfigLoader.PlayerAttackPerRound);
+            _playerMaxHp = playerBaseStats.MaxHp;
+            _playerAttackPerRoundRuntime = playerBaseStats.Attack;
             _enemyDamageDividerRuntime = Mathf.Max(1, _levelConfigLoader.EnemyDamageDivider);
             _enemyMinDamageRuntime = Mathf.Max(1, _levelConfigLoader.EnemyMinDamagePerRound);
             _playerHp = Mathf.Clamp(_playerHp, 0, _playerMaxHp);
@@ -1223,57 +1281,56 @@ namespace Xiuxian.Scripts.Game
 
         private void ConfigureBattleMonster()
         {
-            _battleMonsterName = UiText.DefaultMonsterName;
-            _enemyMaxHp = 24;
-            _enemyAttackPower = 4;
-            _inputsPerBattleRoundRuntime = InputsPerBattleRound;
-
-            if (_levelConfigLoader != null && !string.IsNullOrEmpty(_battleMonsterId))
+            MonsterStatProfile? profile = null;
+            if (_levelConfigLoader != null && !string.IsNullOrEmpty(_battleMonsterId) && _levelConfigLoader.TryGetMonsterStatProfile(_battleMonsterId, out MonsterStatProfile loadedProfile))
             {
-                if (_levelConfigLoader.TryGetMonsterCombatParams(
-                    _battleMonsterId,
-                    out string monsterName,
-                    out int hp,
-                    out int inputsPerRound,
-                    out int attack))
-                {
-                    _battleMonsterName = monsterName;
-                    _enemyMaxHp = hp;
-                    _inputsPerBattleRoundRuntime = inputsPerRound;
-                    _enemyAttackPower = attack;
-                }
+                profile = loadedProfile;
             }
 
+            BattleStartSetup setup = BattleStartRules.BuildStartSetup(_battleMonsterId, profile, InputsPerBattleRound);
+            _battleMonsterId = setup.MonsterId;
+            _battleMonsterName = setup.MonsterName;
+            _enemyMaxHp = setup.EnemyMaxHp;
+            _enemyAttackPower = setup.EnemyAttack;
+            _inputsPerBattleRoundRuntime = setup.InputsPerRound;
+            _battleRoundCounter = setup.BattleRoundCounter;
+            _pendingBattleInputEvents = setup.PendingBattleInputEvents;
             _enemyHp = _enemyMaxHp;
         }
 
         private void ApplyBattleRewards()
         {
-            bool appliedFromConfig = false;
             double lingqi = 0.0;
             double insight = 0.0;
+            string itemPart = "none";
+            int dropCount = 0;
 
             if (_levelConfigLoader != null && !string.IsNullOrEmpty(_battleMonsterId))
             {
                 var drops = _levelConfigLoader.RollMonsterDrops(_battleMonsterId);
+                dropCount = drops.Count;
+                itemPart = drops.Count > 0 ? BuildDropSummary(drops) : "none";
                 ApplyResourceAndItemRewards(0.0, 0.0, drops, "battle_drop");
 
                 if (_levelConfigLoader.TryRollMonsterSettlementReward(_battleMonsterId, out lingqi, out insight))
                 {
                     ApplyResourceAndItemRewards(lingqi, insight, new Dictionary<string, int>(), "battle_settle");
                 }
-
-                appliedFromConfig = drops.Count > 0 || lingqi > 0 || insight > 0;
             }
 
-            if (!appliedFromConfig)
+            BattleRewardDecision rewardDecision = RewardRules.DetermineBattleRewardDecision(dropCount, lingqi, insight, itemPart);
+            if (rewardDecision.ShouldUseFallback)
             {
-                ApplyResourceAndItemRewards(0.0, 0.0, new Dictionary<string, int>
+                var fallbackItems = new Dictionary<string, int>
                 {
                     ["spirit_herb"] = 1,
                     ["lingqi_shard"] = 3
-                }, "battle_fallback");
+                };
+                itemPart = BuildDropSummary(fallbackItems);
+                ApplyResourceAndItemRewards(0.0, 0.0, fallbackItems, "battle_fallback");
             }
+
+            AppendBattleLog(lingqi, insight, itemPart);
         }
 
         private void ApplyLevelCompletionRewards()
@@ -1290,7 +1347,15 @@ namespace Xiuxian.Scripts.Game
                 out double insight,
                 out Dictionary<string, int> items))
             {
-                ApplyResourceAndItemRewards(lingqi, insight, items, firstClear ? $"level_first_clear:{levelId}" : $"level_repeat_clear:{levelId}");
+                ApplyResourceAndItemRewards(lingqi, insight, items, RewardRules.BuildLevelCompletionSourceTag(levelId, firstClear));
+
+                if (firstClear && _backpackState != null && EquipmentRewardRules.TryBuildFirstClearReward(levelId, out EquipmentStatProfile equipmentReward))
+                {
+                    if (!_backpackState.HasEquipment(equipmentReward.EquipmentId))
+                    {
+                        _backpackState.AddEquipment(equipmentReward);
+                    }
+                }
             }
         }
 
@@ -1299,6 +1364,7 @@ namespace Xiuxian.Scripts.Game
             string zoneId = _levelConfigLoader?.ActiveLevelId ?? "";
             string battleState = _inBattle ? "in_battle" : "exploring";
             var markerStates = new Godot.Collections.Array<Variant>();
+            var recentBattleLogs = new Godot.Collections.Array<Variant>();
             for (int i = 0; i < _monsterMarkers.Count; i++)
             {
                 Label marker = _monsterMarkers[i];
@@ -1311,6 +1377,11 @@ namespace Xiuxian.Scripts.Game
                     ["move_threshold"] = i < _monsterMoveInputThreshold.Count ? _monsterMoveInputThreshold[i] : Mathf.Max(1, InputsPerMoveFrame)
                 };
                 markerStates.Add(item);
+            }
+
+            foreach (BattleLogEntry entry in _recentBattleLogs)
+            {
+                recentBattleLogs.Add(entry.ToDictionary());
             }
 
             return new Godot.Collections.Dictionary<string, Variant>
@@ -1335,7 +1406,8 @@ namespace Xiuxian.Scripts.Game
                 ["battle_monster_index"] = _battleMonsterIndex,
                 ["battle_monster_id"] = _battleMonsterId,
                 ["battle_monster_name"] = _battleMonsterName,
-                ["monster_marker_states"] = markerStates
+                ["monster_marker_states"] = markerStates,
+                ["recent_battle_logs"] = recentBattleLogs
             };
         }
 
@@ -1367,6 +1439,25 @@ namespace Xiuxian.Scripts.Game
             _battleMonsterIndex = data.ContainsKey("battle_monster_index") ? data["battle_monster_index"].AsInt32() : _battleMonsterIndex;
             _battleMonsterId = data.ContainsKey("battle_monster_id") ? data["battle_monster_id"].AsString() : _battleMonsterId;
             _battleMonsterName = data.ContainsKey("battle_monster_name") ? data["battle_monster_name"].AsString() : _battleMonsterName;
+
+            _recentBattleLogs.Clear();
+            if (data.ContainsKey("recent_battle_logs") && data["recent_battle_logs"].VariantType == Variant.Type.Array)
+            {
+                var logs = (Godot.Collections.Array<Variant>)data["recent_battle_logs"];
+                foreach (Variant item in logs)
+                {
+                    if (item.VariantType != Variant.Type.Dictionary)
+                    {
+                        continue;
+                    }
+
+                    _recentBattleLogs.Add(BattleLogEntry.FromDictionary((Godot.Collections.Dictionary<string, Variant>)item));
+                    if (_recentBattleLogs.Count >= 10)
+                    {
+                        break;
+                    }
+                }
+            }
 
             if (data.ContainsKey("monster_marker_states") && data["monster_marker_states"].VariantType == Variant.Type.Array)
             {
@@ -1573,7 +1664,6 @@ namespace Xiuxian.Scripts.Game
             sb.Append($" | mode={actionMode}");
             sb.Append($" | progress={_exploreProgress:0.0}%");
             sb.Append($" | monster={_battleMonsterName}({_battleMonsterId})");
-            sb.Append($" | drop={_lastDropSummary}");
             sb.Append($"\nSimFilter level={(string.IsNullOrEmpty(_simulationLevelFilterId) ? "active" : _simulationLevelFilterId)}");
             sb.Append($" | monster={(string.IsNullOrEmpty(_simulationMonsterFilterId) ? "auto" : _simulationMonsterFilterId)}");
 
@@ -1771,6 +1861,46 @@ namespace Xiuxian.Scripts.Game
             return sb.ToString();
         }
 
+        public string BuildRecentBattleLogText()
+        {
+            if (_recentBattleLogs.Count == 0)
+            {
+                return UiText.BattleLogEmpty;
+            }
+
+            var sb = new StringBuilder();
+            sb.Append("最近战斗日志");
+            sb.Append($"\n共 {_recentBattleLogs.Count} 条，最新在上\n");
+
+            foreach (BattleLogEntry entry in _recentBattleLogs)
+            {
+                string timeLabel = entry.TimestampUnix > 0
+                    ? Time.GetDatetimeStringFromUnixTime(entry.TimestampUnix, true).Substring(11, 5)
+                    : "--:--";
+                sb.Append($"\n[{timeLabel}] {entry.ZoneName} | {entry.MonsterName} | {entry.BattleResult}");
+                sb.Append($"\n{entry.RewardSummary}");
+            }
+
+            return sb.ToString();
+        }
+
+        private void AppendBattleLog(double lingqi, double insight, string itemPart)
+        {
+            _recentBattleLogs.Insert(0, new BattleLogEntry
+            {
+                TimestampUnix = (long)Time.GetUnixTimeFromSystem(),
+                ZoneName = _currentZone,
+                MonsterName = string.IsNullOrEmpty(_battleMonsterName) ? UiText.DefaultMonsterName : _battleMonsterName,
+                BattleResult = "胜利",
+                RewardSummary = RewardRules.BuildBattleRewardSummary(lingqi, insight, itemPart),
+            });
+
+            if (_recentBattleLogs.Count > 10)
+            {
+                _recentBattleLogs.RemoveAt(_recentBattleLogs.Count - 1);
+            }
+        }
+
         private void ApplyResourceAndItemRewards(double lingqi, double insight, Dictionary<string, int> items, string source)
         {
             if (lingqi > 0.0)
@@ -1793,4 +1923,3 @@ namespace Xiuxian.Scripts.Game
         }
     }
 }
-

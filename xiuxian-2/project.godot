@@ -25,6 +25,7 @@ BackpackState="*res://scripts/services/BackpackState.cs"
 ResourceWalletState="*res://scripts/services/ResourceWalletState.cs"
 PlayerProgressState="*res://scripts/services/PlayerProgressState.cs"
 PlayerActionState="*res://scripts/services/PlayerActionState.cs"
+EquippedItemsState="*res://scripts/services/EquippedItemsState.cs"
 ActivityConversionService="*res://scripts/services/ActivityConversionService.cs"
 CloudSaveSyncService="*res://scripts/services/CloudSaveSyncService.cs"
 
