@@ -1,0 +1,29 @@
+name: Regression Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  regression-tests:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: xiuxian-2
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Run regression suite
+        run: |
+          chmod +x ./run-regression-tests.sh
+          ./run-regression-tests.sh
