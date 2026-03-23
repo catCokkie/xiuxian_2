@@ -15,16 +15,13 @@
 
 ## 资源转换（每 10 秒结算）
 - 说明：AP 仅用于资源结算，不直接推进探索进度。
-- `lingqi += AP_final_10s * 0.9 * mood_mul * realm_mul`
+- 当前 V1 口径按稳定倍率结算：`lingqi += AP_final_10s * 0.9 * realm_mul`
 - `insight += AP_final_10s * 0.08`
 - `pet_affinity += AP_final_10s * 0.03 * interact_mul`
 
 ## 倍率
-- `mood_mul`：
-- `pet_mood >= 80` -> 1.10
-- `31-79` -> 1.00
-- `<= 30` -> 0.85
 - `realm_mul = 1 + (realm_level - 1) * 0.06`
+- `mood_mul` 作为后续灵宠互动系统预留，不纳入当前主平衡口径。
 
 ## 境界经验需求
 - `exp_required(r) = 120 * r^1.32 + 180`（r 从 1 开始）

@@ -10,6 +10,7 @@
 - `04_milestones.md`：开发里程碑与验收标准
 - `05_ui_style.md`：桌面底栏与展开面板的界面风格规范
 - `06_bottom_exploration_battle.md`：底部探索/战斗进度界面详细设计（你来细化）
+- `06_bottom_exploration_battle.md` 追加：战斗日志面板迁移至子菜单左侧页签的基础设计
 - `07_content_template.md`：境界/地点/怪物/掉落物通用设计模板
 - `08_content_sample_qi_refining.md`：炼气初期内容示例（可直接改）
 - `09_level_monster_drop_sample.md` / `.json`：关卡、怪物、掉落配置与样例数据
@@ -22,3 +23,7 @@
 - 输入采集只记录“次数/强度”，不记录键值文本和鼠标轨迹明文。
 - UI 文案优先维护在 `scripts/ui/UiText.cs`，避免脚本分散硬编码。
 - Godot 场景文件 `*.tscn` 必须使用 `UTF-8`（无 BOM）。写入 BOM 会导致 `Parse Error: Expected '['` 并引发场景依赖加载失败。
+
+## 回归测试
+- 项目根目录提供统一入口：`./run-regression-tests.sh`
+- 当前自动化回归用例位于 `tests/Xiuxian2.Tests/`
