@@ -12,6 +12,19 @@ The current prototype already supports a minimal but real gameplay loop:
 - new equipment goes into backpack first and is only equipped manually
 - equipped gear changes player combat stats and persists in save data
 
+The current UI surface also includes:
+
+- a bottom main bar for lightweight always-on progress visibility
+- a book-style submenu with `Cultivation`, `Battle Log`, `Equipment`, `Stats`, `Bug Feedback`, and `Settings`
+- manual breakthrough when realm progress is full
+- persisted recent battle logs and basic local feedback export tools
+
+Current product boundaries:
+
+- progression is real and persistent, but still prototype-oriented
+- equipment flow is intentionally minimal and uses fixed-rule rewards
+- some settings are intentionally marked as reserved/experimental rather than fully wired product features
+
 ## Regression Tests
 
 Run the current automated regression suite from the project root:
@@ -39,4 +52,29 @@ For a fuller coverage summary and current testing gaps, see `TESTING.md`.
 
 - equipment acquisition is fixed-rule and debug-oriented, not full content-driven loot yet
 - equipment UI is minimal and focused on verification, not final UX
+- config validation currently exists through debug tooling, not a polished standalone panel yet
+- some anti-abuse goals are only partially implemented beyond current decay and cap rules
 - cloud sync, online features, and richer pet systems remain out of current product scope
+
+## Sync To Server
+
+If the server has unstable `git fetch/pull`, use local-to-server rsync sync instead.
+
+1. Copy the example env file and fill in your server info:
+
+```bash
+cp .sync-to-server.env.example .sync-to-server.env
+```
+
+2. Run the sync script from the project root:
+
+```bash
+./sync-to-server.sh
+```
+
+Useful options:
+
+- set `SYNC_DRY_RUN=true` to preview changes first
+- set `SYNC_DELETE=true` only when you want remote stale files removed
+
+This workflow treats GitHub/local as the source of truth and the server as a runtime/build target.

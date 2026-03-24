@@ -37,11 +37,10 @@
 - 字段：
 - `realm_level` (int)
 - `realm_exp` (double)
-- `breakthrough_pill` (int)
 - `insight` (double)
 - 规则：
-- `realm_exp` 满后，需消耗突破丹与悟性进行突破。
-- 突破失败积累保底值，下一次成功率提升（V1 不掉境界）。
+- 当前实现口径：`realm_exp` 满后可直接手动突破，不消耗突破丹，也无失败概率。
+- `breakthrough_pill`、失败保底、成功率提升仍属于后续扩展设计，暂未进入当前代码主闭环。
 
 ## 4) 探索 / 遭遇 / 战斗规则
 - 规则层已拆分为：`BattleStartRules`、`BattleRules`、`BattleLifecycleRules`、`RewardRules`。
@@ -111,6 +110,8 @@
 - 检测异常高频峰值并打标。
 - 本地时间跳变超阈值时进入保守结算。
 - 长时间无焦点但高输入速率时降低收益权重。
+
+备注（当前状态）：上述防刷目标已在设计中明确；当前规则层已落实高频衰减、掉落 soft-cap / daily-cap 等基础护栏，异常时间跳变与长时间无焦点场景仍需要后续专项补齐与验收。
 
 ## 建议 C# 领域类
 - `InputActivityState`
