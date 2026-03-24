@@ -33,6 +33,7 @@ namespace Xiuxian.Scripts.Services
             {
                 EquipmentInstanceData instance = backpackInstances[i];
                 sb.AppendLine($"- [{BuildSlotLabel(instance.Slot)}] {instance.DisplayName} | {BuildRarityLabel(instance.RarityTier)} | {BuildSourceLabel(instance.SourceStage)}");
+                sb.AppendLine($"  对比当前{BuildSlotLabel(instance.Slot)}：{BuildComparisonHint(instance, equippedProfiles)}");
                 sb.AppendLine($"  主属性：{BuildSingleStatLine(instance.MainStatKey, instance.MainStatValue)}");
                 sb.AppendLine($"  副属性：{BuildSubStatSummary(instance.SubStats)}");
             }
@@ -89,6 +90,47 @@ namespace Xiuxian.Scripts.Services
             return string.Join(" | ", parts);
         }
 
+        public static string BuildComparisonHint(EquipmentInstanceData instance, IReadOnlyList<EquipmentStatProfile> equippedProfiles)
+        {
+            bool foundEquipped = false;
+            EquipmentStatProfile equipped = default;
+            for (int i = 0; i < equippedProfiles.Count; i++)
+            {
+                if (equippedProfiles[i].Slot == instance.Slot)
+                {
+                    equipped = equippedProfiles[i];
+                    foundEquipped = true;
+                    break;
+                }
+            }
+
+            if (!foundEquipped)
+            {
+                return "可直接装备";
+            }
+
+            EquipmentStatProfile candidate = EquipmentInstanceRules.ToStatProfile(instance);
+            double currentScore = ScoreModifier(equipped.Modifier);
+            double candidateScore = ScoreModifier(candidate.Modifier);
+            double delta = candidateScore - currentScore;
+            string breakdown = BuildModifierDeltaBreakdown(candidate.Modifier, equipped.Modifier);
+            if (delta > 0.25)
+            {
+                return string.IsNullOrEmpty(breakdown)
+                    ? $"更强（+{delta:0.##}）"
+                    : $"更强（+{delta:0.##}；{breakdown}）";
+            }
+
+            if (delta < -0.25)
+            {
+                return string.IsNullOrEmpty(breakdown)
+                    ? $"更弱（{delta:0.##}）"
+                    : $"更弱（{delta:0.##}；{breakdown}）";
+            }
+
+            return string.IsNullOrEmpty(breakdown) ? "相近" : $"相近（{breakdown}）";
+        }
+
         public static string BuildSingleStatLine(string statKey, double value)
         {
             return statKey switch
@@ -113,6 +155,58 @@ namespace Xiuxian.Scripts.Services
             if (modifier.CritChanceDelta != 0.0) parts.Add($"暴击+{modifier.CritChanceDelta:P0}");
             if (modifier.CritDamageDelta != 0.0) parts.Add($"暴伤+{modifier.CritDamageDelta:0.##}");
             return parts.Count > 0 ? string.Join(" | ", parts) : "当前无额外词条";
+        }
+
+        private static double ScoreModifier(CharacterStatModifier modifier)
+        {
+            return modifier.MaxHpFlat * 0.08
+                + modifier.AttackFlat * 1.0
+                + modifier.DefenseFlat * 0.75
+                + modifier.SpeedFlat * 0.6
+                + modifier.MaxHpRate * 12.0
+                + modifier.AttackRate * 12.0
+                + modifier.DefenseRate * 10.0
+                + modifier.SpeedRate * 8.0
+                + modifier.CritChanceDelta * 120.0
+                + modifier.CritDamageDelta * 20.0;
+        }
+
+        private static string BuildModifierDeltaBreakdown(CharacterStatModifier candidate, CharacterStatModifier current)
+        {
+            List<string> parts = new();
+            AddDelta(parts, "攻击", candidate.AttackFlat - current.AttackFlat);
+            AddDelta(parts, "防御", candidate.DefenseFlat - current.DefenseFlat);
+            AddDelta(parts, "HP", candidate.MaxHpFlat - current.MaxHpFlat);
+            AddDelta(parts, "速度", candidate.SpeedFlat - current.SpeedFlat);
+
+            double critDelta = candidate.CritChanceDelta - current.CritChanceDelta;
+            if (System.Math.Abs(critDelta) >= 0.0001)
+            {
+                parts.Add($"暴击{critDelta:+0%;-0%}");
+            }
+
+            double critDamageDelta = candidate.CritDamageDelta - current.CritDamageDelta;
+            if (System.Math.Abs(critDamageDelta) >= 0.0001)
+            {
+                parts.Add($"暴伤{critDamageDelta:+0.##;-0.##}");
+            }
+
+            if (parts.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            return string.Join(" / ", parts);
+        }
+
+        private static void AddDelta(List<string> parts, string label, int delta)
+        {
+            if (delta == 0)
+            {
+                return;
+            }
+
+            parts.Add($"{label}{delta:+#;-#}");
         }
 
         public static string BuildSlotLabel(EquipmentSlotType slot)
