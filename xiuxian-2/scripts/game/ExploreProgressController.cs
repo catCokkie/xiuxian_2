@@ -249,7 +249,8 @@ namespace Xiuxian.Scripts.Game
             }
             if (_actionState != null)
             {
-                _actionState.ModeChanged += OnActionModeChanged;
+                _actionState.ActionChanged += OnActionChanged;
+                SyncActionTargetToActiveLevel();
             }
         }
 
@@ -269,7 +270,7 @@ namespace Xiuxian.Scripts.Game
             }
             if (_actionState != null)
             {
-                _actionState.ModeChanged -= OnActionModeChanged;
+                _actionState.ActionChanged -= OnActionChanged;
             }
             if (_breakthroughButton != null)
             {
@@ -475,9 +476,9 @@ namespace Xiuxian.Scripts.Game
             RefreshCultivationPanel();
         }
 
-        private void OnActionModeChanged(string modeId)
+        private void OnActionChanged(string actionId, string actionTargetId, string actionVariant)
         {
-            if (IsDungeonMode())
+            if (HasDungeonCapability())
             {
                 _battleInfoLabel.Visible = false;
                 _roundInfoLabel.Text = $"{UiText.ExploreProgress(_exploreProgress)} | {BuildFrontMoveStatus()}";
@@ -528,7 +529,7 @@ namespace Xiuxian.Scripts.Game
             }
 
             _syncingActionModeOption = true;
-            int selected = IsDungeonMode() ? 0 : 1;
+            int selected = HasDungeonCapability() ? 0 : 1;
             _actionModeOptionButton.Select(selected);
             _actionModeOptionButton.Text = selected == 0 ? UiText.ActionModeDungeon : UiText.ActionModeCultivation;
             _syncingActionModeOption = false;
@@ -583,7 +584,8 @@ namespace Xiuxian.Scripts.Game
             string modeId = index == 1
                 ? PlayerActionState.ModeCultivation
                 : PlayerActionState.ModeDungeon;
-            _actionState.SetMode(modeId);
+            string targetLevelId = modeId == PlayerActionState.ModeDungeon ? _levelConfigLoader?.ActiveLevelId ?? string.Empty : string.Empty;
+            _actionState.SetAction(modeId, targetLevelId);
         }
 
         private void OnLevelOptionSelected(long index)
@@ -607,6 +609,10 @@ namespace Xiuxian.Scripts.Game
 
             if (_levelConfigLoader.TrySetActiveLevelIfUnlocked(levelId))
             {
+                if (_actionState != null && _actionState.IsDungeonAction)
+                {
+                    _actionState.SetAction(_actionState.ActionId, levelId, _actionState.ActionVariant);
+                }
                 ApplyLevelConfig();
                 _zoneLabel.Text = _currentZone;
                 _exploreProgress = 0.0f;
@@ -618,6 +624,7 @@ namespace Xiuxian.Scripts.Game
 
         private void OnLevelConfigLoaded(string levelId, string levelName)
         {
+            SyncActionTargetToActiveLevel();
             ApplyLevelConfig();
             _zoneLabel.Text = _currentZone;
             RefreshLevelOptionButton();
@@ -669,7 +676,7 @@ namespace Xiuxian.Scripts.Game
                 return;
             }
 
-            if (!IsDungeonMode())
+            if (!HasDungeonCapability())
             {
                 _battleInfoLabel.Text = "主行为：修炼";
                 _battleInfoLabel.Visible = true;
@@ -1683,9 +1690,10 @@ namespace Xiuxian.Scripts.Game
             }
 
             var sb = new StringBuilder();
-            string actionMode = IsDungeonMode() ? "dungeon" : "cultivation";
+            string actionMode = HasDungeonCapability() ? "dungeon" : "cultivation";
             sb.Append($"[F8] debug | zone={_currentZone}");
             sb.Append($" | mode={actionMode}");
+            sb.Append($" | target={_actionState?.ActionTargetId ?? ""}");
             sb.Append($" | progress={_exploreProgress:0.0}%");
             sb.Append($" | monster={_battleMonsterName}({_battleMonsterId})");
             sb.Append($"\nSimFilter level={(string.IsNullOrEmpty(_simulationLevelFilterId) ? "active" : _simulationLevelFilterId)}");
@@ -1707,9 +1715,23 @@ namespace Xiuxian.Scripts.Game
             _debugPanelLabel.Text = sb.ToString();
         }
 
-        private bool IsDungeonMode()
+        private bool HasDungeonCapability()
         {
-            return _actionState == null || _actionState.IsDungeonMode;
+            return PlayerActionCapabilityRules.HasCapability(_actionState, PlayerActionCapability.AdvancesDungeon);
+        }
+
+        private void SyncActionTargetToActiveLevel()
+        {
+            if (_actionState == null || _levelConfigLoader == null || !_actionState.IsDungeonAction)
+            {
+                return;
+            }
+
+            string activeLevelId = _levelConfigLoader.ActiveLevelId;
+            if (!string.IsNullOrEmpty(activeLevelId) && _actionState.ActionTargetId != activeLevelId)
+            {
+                _actionState.SetAction(_actionState.ActionId, activeLevelId, _actionState.ActionVariant);
+            }
         }
 
         private void RefreshValidationPanel()

@@ -12,50 +12,78 @@ namespace Xiuxian.Scripts.Services
         [Signal]
         public delegate void ModeChangedEventHandler(string modeId);
 
+        [Signal]
+        public delegate void ActionChangedEventHandler(string actionId, string actionTargetId, string actionVariant);
+
         public const string ModeDungeon = "dungeon";
         public const string ModeCultivation = "cultivation";
 
-        private string _modeId = ModeDungeon;
+        public const string ActionDungeon = ModeDungeon;
+        public const string ActionCultivation = ModeCultivation;
 
-        public string ModeId => _modeId;
-        public bool IsDungeonMode => _modeId == ModeDungeon;
-        public bool IsCultivationMode => _modeId == ModeCultivation;
+        private string _actionId = ActionDungeon;
+        private string _actionTargetId = string.Empty;
+        private string _actionVariant = string.Empty;
+
+        public string ModeId => _actionId;
+        public string ActionId => _actionId;
+        public string ActionTargetId => _actionTargetId;
+        public string ActionVariant => _actionVariant;
+        public bool IsDungeonMode => _actionId == ActionDungeon;
+        public bool IsCultivationMode => _actionId == ActionCultivation;
+        public bool IsDungeonAction => _actionId == ActionDungeon;
+        public bool IsCultivationAction => _actionId == ActionCultivation;
 
         public void SetMode(string modeId)
         {
-            string next = NormalizeMode(modeId);
-            if (next == _modeId)
+            SetAction(modeId);
+        }
+
+        public void SetAction(string actionId, string actionTargetId = "", string actionVariant = "")
+        {
+            PlayerActionStateRules.PlayerActionStateData next = PlayerActionStateRules.Normalize(actionId, actionTargetId, actionVariant);
+            if (next.ActionId == _actionId && next.ActionTargetId == _actionTargetId && next.ActionVariant == _actionVariant)
             {
                 return;
             }
 
-            _modeId = next;
-            EmitSignal(SignalName.ModeChanged, _modeId);
+            bool actionChanged = next.ActionId != _actionId;
+            _actionId = next.ActionId;
+            _actionTargetId = next.ActionTargetId;
+            _actionVariant = next.ActionVariant;
+
+            if (actionChanged)
+            {
+                EmitSignal(SignalName.ModeChanged, _actionId);
+            }
+
+            EmitSignal(SignalName.ActionChanged, _actionId, _actionTargetId, _actionVariant);
         }
 
         public void ToggleMode()
         {
-            SetMode(IsDungeonMode ? ModeCultivation : ModeDungeon);
+            SetAction(IsDungeonMode ? ActionCultivation : ActionDungeon);
         }
 
         public Godot.Collections.Dictionary<string, Variant> ToDictionary()
         {
             return new Godot.Collections.Dictionary<string, Variant>
             {
-                ["mode_id"] = _modeId
+                ["mode_id"] = _actionId,
+                ["action_id"] = _actionId,
+                ["action_target_id"] = _actionTargetId,
+                ["action_variant"] = _actionVariant,
             };
         }
 
         public void FromDictionary(Godot.Collections.Dictionary<string, Variant> data)
         {
-            string modeId = data.ContainsKey("mode_id") ? data["mode_id"].AsString() : ModeDungeon;
-            _modeId = NormalizeMode(modeId);
-            EmitSignal(SignalName.ModeChanged, _modeId);
-        }
-
-        private static string NormalizeMode(string modeId)
-        {
-            return modeId == ModeCultivation ? ModeCultivation : ModeDungeon;
+            PlayerActionStateRules.PlayerActionStateData next = PlayerActionStateRules.FromDictionary(data);
+            _actionId = next.ActionId;
+            _actionTargetId = next.ActionTargetId;
+            _actionVariant = next.ActionVariant;
+            EmitSignal(SignalName.ModeChanged, _actionId);
+            EmitSignal(SignalName.ActionChanged, _actionId, _actionTargetId, _actionVariant);
         }
     }
 }

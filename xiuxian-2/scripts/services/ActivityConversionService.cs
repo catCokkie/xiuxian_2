@@ -81,7 +81,7 @@ namespace Xiuxian.Scripts.Services
 
         private void OnActivityTick(double apThisSecond, double apFinal)
         {
-            if (_actionState != null && !_actionState.IsCultivationMode)
+            if (!PlayerActionCapabilityRules.HasCapability(_actionState, PlayerActionCapability.ConsumesApSettlement))
             {
                 return;
             }
@@ -96,7 +96,7 @@ namespace Xiuxian.Scripts.Services
                 return;
             }
 
-            if (_actionState != null && !_actionState.IsCultivationMode)
+            if (!PlayerActionCapabilityRules.HasCapability(_actionState, PlayerActionCapability.GrantsCultivationInputExp))
             {
                 return;
             }
@@ -124,7 +124,8 @@ namespace Xiuxian.Scripts.Services
             double lingqiGain = apFinal10s * LingqiFactor * moodMul * realmMul;
             double insightGain = apFinal10s * InsightFactor;
             double petAffinityGain = apFinal10s * PetAffinityFactor;
-            bool inputExpActive = CultivationInputExpEnabled && (_actionState == null || _actionState.IsCultivationMode);
+            bool inputExpActive = CultivationInputExpEnabled
+                && PlayerActionCapabilityRules.HasCapability(_actionState, PlayerActionCapability.GrantsCultivationInputExp);
             double realmExpGain = inputExpActive ? 0.0 : lingqiGain * RealmExpFromLingqiRate;
 
             _walletState.AddLingqi(lingqiGain);
