@@ -124,6 +124,7 @@ namespace Xiuxian.Scripts.Game
         private bool _validationOnlyActiveLevel;
         private bool _syncingActionModeOption;
         private bool _syncingLevelOption;
+        private bool _offlineSummaryVisible;
         private string _lastDropSummary = "none";
         private string _lastSimulationSummary = "no simulation";
         private string _simulationLevelFilterId = "";
@@ -478,6 +479,7 @@ namespace Xiuxian.Scripts.Game
 
         private void OnActionChanged(string actionId, string actionTargetId, string actionVariant)
         {
+            _offlineSummaryVisible = false;
             if (HasDungeonCapability())
             {
                 _battleInfoLabel.Visible = false;
@@ -1268,6 +1270,11 @@ namespace Xiuxian.Scripts.Game
 
         private void ApplyLevelConfig()
         {
+            if (_offlineSummaryVisible)
+            {
+                return;
+            }
+
             if (_levelConfigLoader == null)
             {
                 return;
@@ -1732,6 +1739,14 @@ namespace Xiuxian.Scripts.Game
             {
                 _actionState.SetAction(_actionState.ActionId, activeLevelId, _actionState.ActionVariant);
             }
+        }
+
+        public void ShowOfflineSummary(string title, string body)
+        {
+            _offlineSummaryVisible = true;
+            _battleInfoLabel.Text = title;
+            _battleInfoLabel.Visible = true;
+            _roundInfoLabel.Text = body;
         }
 
         private void RefreshValidationPanel()

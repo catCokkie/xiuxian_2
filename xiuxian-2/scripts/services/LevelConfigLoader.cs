@@ -1017,6 +1017,32 @@ namespace Xiuxian.Scripts.Services
             return result;
         }
 
+        public DungeonOfflineSettlementRules.WeightedMonsterProfile[] GetOfflineWeightedMonsters(string levelId = "")
+        {
+            List<DungeonOfflineProjectionRules.MonsterSettlementSpec> specs = BuildOfflineMonsterSettlementSpecs(levelId);
+            return DungeonOfflineProjectionRules.BuildWeightedMonsters(specs);
+        }
+
+        public double GetOfflineAverageLingqiPerVictory(string levelId = "")
+        {
+            return DungeonOfflineProjectionRules.CalculateAverageLingqiPerVictory(BuildOfflineMonsterSettlementSpecs(levelId));
+        }
+
+        public double GetOfflineAverageInsightPerVictory(string levelId = "")
+        {
+            return DungeonOfflineProjectionRules.CalculateAverageInsightPerVictory(BuildOfflineMonsterSettlementSpecs(levelId));
+        }
+
+        public Dictionary<string, double> GetOfflineAverageItemDropsPerVictory(string levelId = "")
+        {
+            return DungeonOfflineProjectionRules.CalculateAverageItemDropsPerVictory(BuildOfflineMonsterSettlementSpecs(levelId));
+        }
+
+        public double GetOfflineAverageEquipmentDropsPerVictory(string levelId = "")
+        {
+            return DungeonOfflineProjectionRules.CalculateAverageEquipmentDropsPerVictory(BuildOfflineMonsterSettlementSpecs(levelId));
+        }
+
         private string RunBattleSimulationCore(int battleCount, string forcedMonsterId = "")
         {
             int count = Math.Max(1, battleCount);
@@ -1091,6 +1117,163 @@ namespace Xiuxian.Scripts.Services
             _lastSimulationReport =
                 $"n={count}, avg_lq={avgLingqi:0.0}, avg_in={avgInsight:0.0}, pity={pityTriggeredCount}, softSkip={softSkipCount}, dailyBlock={dailyBlockedCount}, top={topDrops}";
             return _lastSimulationReport;
+        }
+
+        private List<DungeonOfflineProjectionRules.MonsterSettlementSpec> BuildOfflineMonsterSettlementSpecs(string levelId = "")
+        {
+            var result = new List<DungeonOfflineProjectionRules.MonsterSettlementSpec>();
+            if (_levels.Count == 0)
+            {
+                return result;
+            }
+
+            int levelIndex = _activeLevelIndex;
+            if (!string.IsNullOrEmpty(levelId) && TryFindLevelIndex(levelId, out int found))
+            {
+                levelIndex = found;
+            }
+
+            var level = _levels[Math.Clamp(levelIndex, 0, _levels.Count - 1)];
+            if (!level.ContainsKey("spawn_table") || level["spawn_table"].VariantType != Variant.Type.Array)
+            {
+                return result;
+            }
+
+            var spawnTable = (Godot.Collections.Array<Variant>)level["spawn_table"];
+            foreach (Variant item in spawnTable)
+            {
+                if (item.VariantType != Variant.Type.Dictionary)
+                {
+                    continue;
+                }
+
+                var dict = (Godot.Collections.Dictionary<string, Variant>)item;
+                string monsterId = GetString(dict, "monster_id", "");
+                int weight = Math.Max(0, dict.ContainsKey("weight") ? dict["weight"].AsInt32() : 0);
+                if (string.IsNullOrEmpty(monsterId) || weight <= 0 || !TryGetMonsterStatProfile(monsterId, out MonsterStatProfile monsterProfile))
+                {
+                    continue;
+                }
+
+                double averageLingqi = 0.0;
+                double averageInsight = 0.0;
+                if (TryGetMonster(monsterId, out var monster) && TryGetChildDictionary(monster, "settlement_reward", out var settlement))
+                {
+                    int lingqiMin = settlement.ContainsKey("lingqi_min") ? settlement["lingqi_min"].AsInt32() : 0;
+                    int lingqiMax = settlement.ContainsKey("lingqi_max") ? settlement["lingqi_max"].AsInt32() : lingqiMin;
+                    int insightMin = settlement.ContainsKey("insight_min") ? settlement["insight_min"].AsInt32() : 0;
+                    int insightMax = settlement.ContainsKey("insight_max") ? settlement["insight_max"].AsInt32() : insightMin;
+                    averageLingqi = (lingqiMin + lingqiMax) / 2.0;
+                    averageInsight = (insightMin + insightMax) / 2.0;
+                }
+
+                result.Add(new DungeonOfflineProjectionRules.MonsterSettlementSpec(
+                    weight,
+                    monsterProfile,
+                    averageLingqi,
+                    averageInsight,
+                    BuildOfflineAverageItemDrops(monsterId),
+                    BuildOfflineAverageEquipmentDrops(monsterId)));
+            }
+
+            return result;
+        }
+
+        private Dictionary<string, double> BuildOfflineAverageItemDrops(string monsterId)
+        {
+            var result = new Dictionary<string, double>();
+            if (!TryGetMonster(monsterId, out var monster) || !TryGetChildDictionary(monster, "drops", out var drops))
+            {
+                return result;
+            }
+
+            string configuredDropTableId = GetString(drops, "drop_table_id", "");
+            string dropTableId = ResolveDropTableForActiveLevel(monsterId, configuredDropTableId);
+            int dropRollCount = Math.Max(0, drops.ContainsKey("drop_roll_count") ? drops["drop_roll_count"].AsInt32() : 1);
+            if (!string.IsNullOrEmpty(dropTableId) && TryGetDropTable(dropTableId, out var table) && table.ContainsKey("entries") && table["entries"].VariantType == Variant.Type.Array)
+            {
+                var entries = (Godot.Collections.Array<Variant>)table["entries"];
+                List<EquipmentDropResolutionRules.DropEntrySpec> specs = BuildDropEntrySpecs(entries);
+                int totalWeight = 0;
+                for (int i = 0; i < specs.Count; i++)
+                {
+                    totalWeight += Math.Max(0, specs[i].Weight);
+                }
+
+                if (totalWeight > 0)
+                {
+                    for (int i = 0; i < specs.Count; i++)
+                    {
+                        EquipmentDropResolutionRules.DropEntrySpec spec = specs[i];
+                        if (spec.EntryType != "item" || string.IsNullOrEmpty(spec.ItemId) || spec.Weight <= 0)
+                        {
+                            continue;
+                        }
+
+                        double avgQty = (spec.MinQty + spec.MaxQty) / 2.0;
+                        double expected = dropRollCount * (spec.Weight / (double)totalWeight) * avgQty;
+                        result[spec.ItemId] = result.TryGetValue(spec.ItemId, out double current) ? current + expected : expected;
+                    }
+                }
+            }
+
+            if (drops.ContainsKey("guaranteed_drop") && drops["guaranteed_drop"].VariantType == Variant.Type.Array)
+            {
+                var guaranteed = (Godot.Collections.Array<Variant>)drops["guaranteed_drop"];
+                foreach (Variant item in guaranteed)
+                {
+                    if (item.VariantType != Variant.Type.Dictionary)
+                    {
+                        continue;
+                    }
+
+                    var dict = (Godot.Collections.Dictionary<string, Variant>)item;
+                    string itemId = GetString(dict, "item_id", "");
+                    int qty = Math.Max(0, dict.ContainsKey("qty") ? dict["qty"].AsInt32() : 0);
+                    if (!string.IsNullOrEmpty(itemId) && qty > 0)
+                    {
+                        result[itemId] = result.TryGetValue(itemId, out double current) ? current + qty : qty;
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private double BuildOfflineAverageEquipmentDrops(string monsterId)
+        {
+            if (!TryGetMonster(monsterId, out var monster) || !TryGetChildDictionary(monster, "drops", out var drops))
+            {
+                return 0.0;
+            }
+
+            string configuredDropTableId = GetString(drops, "drop_table_id", "");
+            string dropTableId = ResolveDropTableForActiveLevel(monsterId, configuredDropTableId);
+            int dropRollCount = Math.Max(0, drops.ContainsKey("drop_roll_count") ? drops["drop_roll_count"].AsInt32() : 1);
+            if (string.IsNullOrEmpty(dropTableId) || !TryGetDropTable(dropTableId, out var table) || !table.ContainsKey("entries") || table["entries"].VariantType != Variant.Type.Array)
+            {
+                return 0.0;
+            }
+
+            var entries = (Godot.Collections.Array<Variant>)table["entries"];
+            List<EquipmentDropResolutionRules.DropEntrySpec> specs = BuildDropEntrySpecs(entries);
+            int totalWeight = 0;
+            int equipmentWeight = 0;
+            for (int i = 0; i < specs.Count; i++)
+            {
+                totalWeight += Math.Max(0, specs[i].Weight);
+                if (specs[i].EntryType == "equipment_template")
+                {
+                    equipmentWeight += Math.Max(0, specs[i].Weight);
+                }
+            }
+
+            if (totalWeight <= 0 || equipmentWeight <= 0)
+            {
+                return 0.0;
+            }
+
+            return dropRollCount * (equipmentWeight / (double)totalWeight);
         }
 
         private bool TryFindLevelIndex(string levelId, out int levelIndex)

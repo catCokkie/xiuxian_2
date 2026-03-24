@@ -1,5 +1,6 @@
-﻿using Godot;
+using Godot;
 using System;
+using System.Collections.Generic;
 using Xiuxian.Scripts.Services;
 
 namespace Xiuxian.Scripts.Game
@@ -294,7 +295,9 @@ namespace Xiuxian.Scripts.Game
                 return false;
             }
 
-            if (!PlayerActionCapabilityRules.HasCapability(_playerActionState, PlayerActionCapability.ConsumesApSettlement))
+            bool isCultivation = PlayerActionCapabilityRules.HasCapability(_playerActionState, PlayerActionCapability.ConsumesApSettlement);
+            bool isDungeon = PlayerActionCapabilityRules.HasCapability(_playerActionState, PlayerActionCapability.AdvancesDungeon);
+            if (!isCultivation && !isDungeon)
             {
                 return false;
             }
@@ -311,17 +314,19 @@ namespace Xiuxian.Scripts.Game
                 return false;
             }
 
-            ActionSettlementResult result = OfflineSettlementRules.BuildCultivationOfflineSettlement(
-                offlineSeconds,
-                apPerInput: 1.0,
-                lingqiFactor: 0.9,
-                insightFactor: 0.08,
-                petAffinityFactor: 0.03,
-                realmExpFromLingqiRate: 0.25,
-                moodMultiplier: _playerProgressState.GetMoodMultiplier(),
-                realmMultiplier: _playerProgressState.GetRealmMultiplier(),
-                inputExpActive: false,
-                actionTargetId: _playerActionState.ActionTargetId);
+            ActionSettlementResult result = isCultivation
+                ? OfflineSettlementRules.BuildCultivationOfflineSettlement(
+                    offlineSeconds,
+                    apPerInput: 1.0,
+                    lingqiFactor: 0.9,
+                    insightFactor: 0.08,
+                    petAffinityFactor: 0.03,
+                    realmExpFromLingqiRate: 0.25,
+                    moodMultiplier: _playerProgressState.GetMoodMultiplier(),
+                    realmMultiplier: _playerProgressState.GetRealmMultiplier(),
+                    inputExpActive: false,
+                    actionTargetId: _playerActionState.ActionTargetId)
+                : BuildOfflineDungeonSettlement(offlineSeconds);
 
             if (!result.HasAnyReward)
             {
@@ -332,8 +337,54 @@ namespace Xiuxian.Scripts.Game
             _resourceWalletState.AddInsight(result.InsightGain);
             _resourceWalletState.AddPetAffinity(result.PetAffinityGain);
             _playerProgressState.AddRealmExp(result.RealmExpGain);
+            if (_backpackState != null)
+            {
+                foreach (KeyValuePair<string, int> drop in result.ItemDrops)
+                {
+                    _backpackState.AddItem(drop.Key, drop.Value);
+                }
+
+                foreach (EquipmentInstanceData equipmentDrop in result.EquipmentDrops)
+                {
+                    if (!_backpackState.HasEquipment(equipmentDrop.EquipmentId))
+                    {
+                        _backpackState.AddEquipmentInstance(equipmentDrop);
+                    }
+                }
+            }
+            _exploreProgressController?.ShowOfflineSummary(
+                OfflineSummaryPresentationRules.BuildTitle(result),
+                OfflineSummaryPresentationRules.BuildBody(result));
             MarkDirty();
             return true;
+        }
+
+        private ActionSettlementResult BuildOfflineDungeonSettlement(double offlineSeconds)
+        {
+            if (_levelConfigLoader == null || _equippedItemsState == null || _playerProgressState == null)
+            {
+                return new ActionSettlementResult(PlayerActionState.ActionDungeon, _playerActionState?.ActionTargetId ?? string.Empty, "offline_dungeon", 0, 0, 0, 0, 0, 0, 0, new Dictionary<string, int>(), Array.Empty<EquipmentInstanceData>());
+            }
+
+            double offlineInputBudget = OfflineSettlementRules.CalculateOfflineInputBudget(offlineSeconds);
+            CharacterStatBlock baseStats = PlayerBaseStatRules.BuildBaseStats(
+                _playerProgressState.RealmLevel,
+                _levelConfigLoader.PlayerBaseHp,
+                _levelConfigLoader.PlayerAttackPerRound);
+            CharacterStatBlock playerStats = CharacterStatRules.BuildFinalStats(baseStats, _equippedItemsState.GetEquippedProfiles());
+
+            return DungeonOfflineSettlementRules.BuildDungeonOfflineSettlement(
+                actionTargetId: _playerActionState?.ActionTargetId ?? _levelConfigLoader.ActiveLevelId,
+                offlineInputBudget: offlineInputBudget,
+                dungeonProgressPerInput: _levelConfigLoader.ProgressPer100Inputs / 100.0,
+                encounterProgressThreshold: _levelConfigLoader.EncounterCheckIntervalProgress,
+                playerStats: playerStats,
+                weightedMonsters: _levelConfigLoader.GetOfflineWeightedMonsters(),
+                averageLingqiPerVictory: _levelConfigLoader.GetOfflineAverageLingqiPerVictory(),
+                averageInsightPerVictory: _levelConfigLoader.GetOfflineAverageInsightPerVictory(),
+                averageItemDropsPerVictory: _levelConfigLoader.GetOfflineAverageItemDropsPerVictory(),
+                equipmentDropCap: 2,
+                estimatedEquipmentDropsPerVictory: _levelConfigLoader.GetOfflineAverageEquipmentDropsPerVictory());
         }
 
         private void LoadLegacyState()
