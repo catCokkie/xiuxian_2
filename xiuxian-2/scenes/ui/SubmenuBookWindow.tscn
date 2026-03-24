@@ -108,6 +108,11 @@ layout_mode = 2
 toggle_mode = true
 text = "统计概览"
 
+[node name="ValidationTab" type="Button" parent="BookFrame/TopStrip/LeftTabs"]
+layout_mode = 2
+toggle_mode = true
+text = "配置校验"
+
 [node name="RightTabs" type="HBoxContainer" parent="BookFrame/TopStrip"]
 layout_mode = 2
 size_flags_horizontal = 3

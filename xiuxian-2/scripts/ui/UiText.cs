@@ -15,6 +15,7 @@ public static class UiText
     public const string LeftTabBattleLog = "战斗日志";
     public const string LeftTabEquipment = "装备情况";
     public const string LeftTabStats = "统计概览";
+    public const string LeftTabValidation = "配置校验";
     public const string RightTabOnline = "联机";
     public const string RightTabBug = "Bug反馈";
     public const string RightTabSettings = "设置";

@@ -16,6 +16,7 @@ public partial class BookTabsController : Control
         { "BattleLogTab", UiText.BattleLogEmpty },
         { "EquipmentTab", UiText.EquipmentTemplate },
         { "StatsTab", UiText.StatsTemplate },
+        { "ValidationTab", UiText.LeftTabValidation },
     };
 
     private readonly Dictionary<string, string> _rightTabContentMap = new()
@@ -38,6 +39,10 @@ public partial class BookTabsController : Control
     private VBoxContainer _settingsActionRoot = null!;
     private VBoxContainer _bugFeedbackRoot = null!;
     private VBoxContainer _equipmentRoot = null!;
+    private VBoxContainer _validationRoot = null!;
+    private Panel _validationFilterPanel = null!;
+    private Panel _validationResultPanel = null!;
+    private Panel _simulationResultPanel = null!;
     private Button _settingsSystemBtn = null!;
     private Button _settingsDisplayBtn = null!;
     private Button _settingsProgressBtn = null!;
@@ -61,6 +66,15 @@ public partial class BookTabsController : Control
     private TextEdit _bugFeedbackInput = null!;
     private Label _bugFeedbackStatusLabel = null!;
     private RichTextLabel _equipmentContentLabel = null!;
+    private Label _validationStatusLabel = null!;
+    private RichTextLabel _validationContentLabel = null!;
+    private Label _validationFilterInfoLabel = null!;
+    private Button _validationScopeButton = null!;
+    private Button _validationLevelScopeButton = null!;
+    private Button _simulationLevelButton = null!;
+    private Button _simulationMonsterButton = null!;
+    private Label _simulationStatusLabel = null!;
+    private RichTextLabel _simulationContentLabel = null!;
 
     private Tween? _leftTween;
     private InputActivityState? _activityState;
@@ -77,6 +91,13 @@ public partial class BookTabsController : Control
 
     private string _activeSettingsSection = "system";
     private bool _isApplyingSettingsUi;
+    private int _validationScopeFilterIndex;
+    private bool _validationOnlyActiveLevel;
+    private string _simulationLevelFilterId = "";
+    private string _simulationMonsterFilterId = "";
+    private string _lastSimulationSummary = "";
+
+    private static readonly string[] ValidationScopeFilters = { "all", "config", "level", "monster", "drop_table" };
 
     private readonly Godot.Collections.Dictionary<string, Variant> _settings = new()
     {
@@ -115,6 +136,7 @@ public partial class BookTabsController : Control
         _equippedItemsState = GetNodeOrNull<EquippedItemsState>("/root/EquippedItemsState");
         _levelConfigLoader = GetNodeOrNull<LevelConfigLoader>("/root/LevelConfigLoader");
         _exploreProgressController = GetNodeOrNull<ExploreProgressController>("../../ExploreProgressController");
+        _simulationLevelFilterId = _levelConfigLoader?.ActiveLevelId ?? "";
 
         if (_activityState != null)
         {
@@ -136,6 +158,10 @@ public partial class BookTabsController : Control
         if (_equippedItemsState != null)
         {
             _equippedItemsState.EquippedItemsChanged += OnEquippedItemsChanged;
+        }
+        if (_levelConfigLoader != null)
+        {
+            _levelConfigLoader.ConfigLoaded += OnLevelConfigLoaded;
         }
 
         ApplyStaticTexts();
@@ -175,6 +201,10 @@ public partial class BookTabsController : Control
         if (_equippedItemsState != null)
         {
             _equippedItemsState.EquippedItemsChanged -= OnEquippedItemsChanged;
+        }
+        if (_levelConfigLoader != null)
+        {
+            _levelConfigLoader.ConfigLoaded -= OnLevelConfigLoaded;
         }
     }
 
@@ -275,6 +305,11 @@ public partial class BookTabsController : Control
         RefreshDynamicTabContent();
     }
 
+    private void OnLevelConfigLoaded(string levelId, string levelName)
+    {
+        RefreshDynamicTabContent();
+    }
+
     private void RefreshDynamicTabContent()
     {
         if (ActiveRightTabName == "SettingsTab")
@@ -282,12 +317,16 @@ public partial class BookTabsController : Control
             return;
         }
 
-        if (!_isShowingRightTab && (ActiveLeftTabName == "CultivationTab" || ActiveLeftTabName == "StatsTab" || ActiveLeftTabName == "BattleLogTab" || ActiveLeftTabName == "EquipmentTab"))
+        if (!_isShowingRightTab && (ActiveLeftTabName == "CultivationTab" || ActiveLeftTabName == "StatsTab" || ActiveLeftTabName == "BattleLogTab" || ActiveLeftTabName == "EquipmentTab" || ActiveLeftTabName == "ValidationTab"))
         {
             string content = GetLeftTabContent(ActiveLeftTabName);
             if (ActiveLeftTabName == "EquipmentTab")
             {
                 _equipmentContentLabel.Text = content;
+            }
+            else if (ActiveLeftTabName == "ValidationTab")
+            {
+                RefreshValidationPanelContent();
             }
             else
             {
@@ -304,6 +343,7 @@ public partial class BookTabsController : Control
             "BattleLogTab" => BuildBattleLogText(),
             "EquipmentTab" => BuildEquipmentOverviewText(),
             "StatsTab" => BuildStatsOverviewText(),
+            "ValidationTab" => BuildValidationOverviewText(),
             _ => _leftTabContentMap[tabName]
         };
     }
@@ -439,9 +479,254 @@ public partial class BookTabsController : Control
                 _activityState.TotalMouseClickCount,
                 _activityState.TotalMouseScrollSteps,
                 _activityState.TotalMouseMoveDistancePx,
-                _activityState.ApAccumulator,
-                herbCount,
-                shardCount);
+            _activityState.ApAccumulator,
+            herbCount,
+            shardCount);
+    }
+
+    private string BuildValidationOverviewText()
+    {
+        if (_levelConfigLoader == null)
+        {
+            return "配置校验当前不可用：LevelConfigLoader 未加载。";
+        }
+
+        var filtered = GetFilteredValidationItems();
+        string body = ConfigValidationViewFormatter.BuildBody(filtered, 8);
+        return body.TrimEnd();
+    }
+
+    private string BuildValidationFilterInfoText()
+    {
+        if (_levelConfigLoader == null)
+        {
+            return "当前关卡：未加载\n过滤：不可用\n模拟筛选：不可用";
+        }
+
+        string activeLevelName = string.IsNullOrEmpty(_levelConfigLoader.ActiveLevelName) ? "未选择" : _levelConfigLoader.ActiveLevelName;
+        string activeLevelId = string.IsNullOrEmpty(_levelConfigLoader.ActiveLevelId) ? "-" : _levelConfigLoader.ActiveLevelId;
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"当前关卡：{activeLevelName} ({activeLevelId})");
+        sb.AppendLine($"校验过滤：{BuildValidationFilterSummary()}");
+        sb.AppendLine(BuildSimulationLevelButtonText());
+        sb.Append(BuildSimulationMonsterButtonText());
+        return sb.ToString().TrimEnd();
+    }
+
+    private string BuildSimulationDetailText()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(BuildSimulationLevelButtonText());
+        sb.AppendLine(BuildSimulationMonsterButtonText());
+        sb.AppendLine();
+        sb.Append(ConfigValidationViewFormatter.BuildSimulationStatus(_lastSimulationSummary));
+        return sb.ToString().TrimEnd();
+    }
+
+    private void RefreshValidationPanelContent()
+    {
+        if (_validationStatusLabel == null || _validationContentLabel == null || _validationFilterInfoLabel == null || _validationScopeButton == null || _validationLevelScopeButton == null || _simulationLevelButton == null || _simulationMonsterButton == null || _simulationStatusLabel == null || _simulationContentLabel == null)
+        {
+            return;
+        }
+
+        _validationScopeButton.Text = $"范围：{BuildValidationScopeButtonLabel()}";
+        _validationLevelScopeButton.Text = _validationOnlyActiveLevel ? "关卡：当前关卡" : "关卡：全部关卡";
+        _simulationLevelButton.Text = BuildSimulationLevelButtonText();
+        _simulationMonsterButton.Text = BuildSimulationMonsterButtonText();
+        _simulationStatusLabel.Text = ConfigValidationViewFormatter.BuildSimulationStatus(_lastSimulationSummary);
+        _validationFilterInfoLabel.Text = BuildValidationFilterInfoText();
+        _simulationContentLabel.Text = BuildSimulationDetailText();
+
+        if (_levelConfigLoader == null)
+        {
+            _validationStatusLabel.Text = "LevelConfigLoader 未加载，无法显示配置校验结果。";
+            _validationContentLabel.Text = "请先确认配置已成功加载。";
+            _simulationContentLabel.Text = "请先确认配置已成功加载。";
+            return;
+        }
+
+        var filtered = GetFilteredValidationItems();
+        int totalCount = _levelConfigLoader.GetValidationEntries().Count;
+        string filterSummary = BuildValidationFilterSummary();
+
+        _validationStatusLabel.Text = ConfigValidationViewFormatter.BuildTitle(filtered.Count, totalCount, filterSummary);
+        _validationContentLabel.Text = BuildValidationOverviewText();
+    }
+
+    private void CycleValidationScope()
+    {
+        _validationScopeFilterIndex = (_validationScopeFilterIndex + 1) % ValidationScopeFilters.Length;
+        RefreshValidationPanelContent();
+    }
+
+    private void ToggleValidationLevelScope()
+    {
+        _validationOnlyActiveLevel = !_validationOnlyActiveLevel;
+        RefreshValidationPanelContent();
+    }
+
+    private void CycleSimulationLevelFilter()
+    {
+        if (_levelConfigLoader == null)
+        {
+            return;
+        }
+
+        var levels = _levelConfigLoader.GetLevelIds();
+        if (levels.Count == 0)
+        {
+            return;
+        }
+
+        int currentIndex = -1;
+        for (int i = 0; i < levels.Count; i++)
+        {
+            if (levels[i] == _simulationLevelFilterId)
+            {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        if (currentIndex < 0)
+        {
+            _simulationLevelFilterId = levels[0];
+        }
+        else
+        {
+            int next = (currentIndex + 1) % (levels.Count + 1);
+            _simulationLevelFilterId = next >= levels.Count ? "" : levels[next];
+        }
+
+        _simulationMonsterFilterId = "";
+        RefreshValidationPanelContent();
+    }
+
+    private void CycleSimulationMonsterFilter()
+    {
+        if (_levelConfigLoader == null)
+        {
+            return;
+        }
+
+        string levelId = GetSimulationLevelId();
+        var monsters = _levelConfigLoader.GetSpawnMonsterIds(levelId);
+        if (monsters.Count == 0)
+        {
+            _simulationMonsterFilterId = "";
+            RefreshValidationPanelContent();
+            return;
+        }
+
+        int currentIndex = -1;
+        for (int i = 0; i < monsters.Count; i++)
+        {
+            if (monsters[i] == _simulationMonsterFilterId)
+            {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        if (currentIndex < 0)
+        {
+            _simulationMonsterFilterId = monsters[0];
+        }
+        else
+        {
+            int next = (currentIndex + 1) % (monsters.Count + 1);
+            _simulationMonsterFilterId = next >= monsters.Count ? "" : monsters[next];
+        }
+
+        RefreshValidationPanelContent();
+    }
+
+    private void RunSimulationFromValidationPanel(int battleCount)
+    {
+        if (_levelConfigLoader == null)
+        {
+            _lastSimulationSummary = "loader unavailable";
+            RefreshValidationPanelContent();
+            return;
+        }
+
+        _lastSimulationSummary = _levelConfigLoader.RunBattleSimulationFiltered(
+            battleCount,
+            GetSimulationLevelId(),
+            _simulationMonsterFilterId);
+        RefreshValidationPanelContent();
+    }
+
+    private string BuildValidationFilterSummary()
+    {
+        string scope = BuildValidationScopeButtonLabel();
+        string levelScope = _validationOnlyActiveLevel ? "active-level" : "all-levels";
+        return $"{scope}, {levelScope}";
+    }
+
+    private string BuildValidationScopeButtonLabel()
+    {
+        string scope = ValidationScopeFilters[Mathf.Clamp(_validationScopeFilterIndex, 0, ValidationScopeFilters.Length - 1)];
+        return scope switch
+        {
+            "all" => "全部",
+            "config" => "全局",
+            "level" => "关卡",
+            "monster" => "怪物",
+            "drop_table" => "掉落",
+            _ => scope,
+        };
+    }
+
+    private string BuildSimulationLevelButtonText()
+    {
+        if (_levelConfigLoader == null)
+        {
+            return "模拟关卡：不可用";
+        }
+
+        bool useActiveLevel = string.IsNullOrEmpty(_simulationLevelFilterId);
+        string levelId = GetSimulationLevelId();
+        string levelName = _levelConfigLoader.GetLevelName(levelId);
+        return ConfigValidationViewFormatter.BuildSimulationLevelLabel(levelId, levelName, useActiveLevel);
+    }
+
+    private string BuildSimulationMonsterButtonText()
+    {
+        return ConfigValidationViewFormatter.BuildSimulationMonsterLabel(_simulationMonsterFilterId, string.IsNullOrEmpty(_simulationMonsterFilterId));
+    }
+
+    private string GetSimulationLevelId()
+    {
+        if (_levelConfigLoader == null)
+        {
+            return "";
+        }
+
+        return string.IsNullOrEmpty(_simulationLevelFilterId)
+            ? _levelConfigLoader.ActiveLevelId
+            : _simulationLevelFilterId;
+    }
+
+    private List<ConfigValidationViewFormatter.ConfigValidationItem> GetFilteredValidationItems()
+    {
+        var entries = _levelConfigLoader?.GetValidationEntries();
+        if (entries == null)
+        {
+            return new List<ConfigValidationViewFormatter.ConfigValidationItem>();
+        }
+
+        List<ConfigValidationViewFormatter.ConfigValidationItem> items = new(entries.Count);
+        foreach (var entry in entries)
+        {
+            items.Add(ConfigValidationViewFormatter.FromDictionary(entry));
+        }
+
+        string activeLevelId = _levelConfigLoader?.ActiveLevelId ?? "";
+        string scope = ValidationScopeFilters[Mathf.Clamp(_validationScopeFilterIndex, 0, ValidationScopeFilters.Length - 1)];
+        return ConfigValidationViewFormatter.FilterItems(items, scope, _validationOnlyActiveLevel, activeLevelId);
     }
 
     private void RefreshCoinLabel()
@@ -471,6 +756,7 @@ public partial class BookTabsController : Control
     private void BuildSettingsUi()
     {
         BuildEquipmentUi();
+        BuildValidationUi();
         BuildBugFeedbackUi();
 
         _settingsNavRoot = new HBoxContainer();
@@ -552,6 +838,129 @@ public partial class BookTabsController : Control
         _equipmentContentLabel.ScrollActive = true;
         _equipmentContentLabel.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         _equipmentRoot.AddChild(_equipmentContentLabel);
+    }
+
+    private void BuildValidationUi()
+    {
+        _validationRoot = new VBoxContainer();
+        _validationRoot.Name = "ValidationRoot";
+        _validationRoot.SetAnchorsPreset(LayoutPreset.FullRect);
+        _validationRoot.OffsetLeft = 20.0f;
+        _validationRoot.OffsetTop = 42.0f;
+        _validationRoot.OffsetRight = -20.0f;
+        _validationRoot.OffsetBottom = -18.0f;
+        _validationRoot.AddThemeConstantOverride("separation", 10);
+        _leftPage.AddChild(_validationRoot);
+
+        _validationFilterPanel = CreateValidationSectionPanel("筛选信息", out VBoxContainer filterContent);
+
+        HBoxContainer filterRow = new();
+        filterRow.AddThemeConstantOverride("separation", 8);
+        filterContent.AddChild(filterRow);
+
+        _validationScopeButton = new Button();
+        _validationScopeButton.Pressed += CycleValidationScope;
+        filterRow.AddChild(_validationScopeButton);
+
+        _validationLevelScopeButton = new Button();
+        _validationLevelScopeButton.Pressed += ToggleValidationLevelScope;
+        filterRow.AddChild(_validationLevelScopeButton);
+
+        _validationFilterInfoLabel = new Label();
+        _validationFilterInfoLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        filterContent.AddChild(_validationFilterInfoLabel);
+
+        _validationResultPanel = CreateValidationSectionPanel("校验结果", out VBoxContainer validationContent);
+
+        _validationStatusLabel = new Label();
+        _validationStatusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        validationContent.AddChild(_validationStatusLabel);
+
+        _validationContentLabel = new RichTextLabel();
+        _validationContentLabel.FitContent = false;
+        _validationContentLabel.ScrollActive = true;
+        _validationContentLabel.CustomMinimumSize = new Vector2(0.0f, 150.0f);
+        _validationContentLabel.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        validationContent.AddChild(_validationContentLabel);
+
+        _simulationResultPanel = CreateValidationSectionPanel("模拟结果", out VBoxContainer simulationContent);
+
+        HBoxContainer simulationFilterRow = new();
+        simulationFilterRow.AddThemeConstantOverride("separation", 8);
+        simulationContent.AddChild(simulationFilterRow);
+
+        _simulationLevelButton = new Button();
+        _simulationLevelButton.Pressed += CycleSimulationLevelFilter;
+        simulationFilterRow.AddChild(_simulationLevelButton);
+
+        _simulationMonsterButton = new Button();
+        _simulationMonsterButton.Pressed += CycleSimulationMonsterFilter;
+        simulationFilterRow.AddChild(_simulationMonsterButton);
+
+        HBoxContainer simulationRunRow = new();
+        simulationRunRow.AddThemeConstantOverride("separation", 8);
+        simulationContent.AddChild(simulationRunRow);
+
+        Button sim200Button = new();
+        sim200Button.Text = "模拟 200 次";
+        sim200Button.Pressed += () => RunSimulationFromValidationPanel(200);
+        simulationRunRow.AddChild(sim200Button);
+
+        Button sim1000Button = new();
+        sim1000Button.Text = "模拟 1000 次";
+        sim1000Button.Pressed += () => RunSimulationFromValidationPanel(1000);
+        simulationRunRow.AddChild(sim1000Button);
+
+        _simulationStatusLabel = new Label();
+        _simulationStatusLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        simulationContent.AddChild(_simulationStatusLabel);
+
+        _simulationContentLabel = new RichTextLabel();
+        _simulationContentLabel.FitContent = false;
+        _simulationContentLabel.ScrollActive = true;
+        _simulationContentLabel.CustomMinimumSize = new Vector2(0.0f, 110.0f);
+        simulationContent.AddChild(_simulationContentLabel);
+    }
+
+    private Panel CreateValidationSectionPanel(string title, out VBoxContainer wrapper)
+    {
+        Panel panel = new();
+        panel.SizeFlagsVertical = Control.SizeFlags.ShrinkBegin;
+        panel.AddThemeStyleboxOverride("panel", CreateValidationSectionStyle());
+        _validationRoot.AddChild(panel);
+
+        wrapper = new VBoxContainer();
+        wrapper.AddThemeConstantOverride("separation", 8);
+        wrapper.SetAnchorsPreset(LayoutPreset.FullRect);
+        wrapper.OffsetLeft = 12.0f;
+        wrapper.OffsetTop = 10.0f;
+        wrapper.OffsetRight = -12.0f;
+        wrapper.OffsetBottom = -10.0f;
+        panel.AddChild(wrapper);
+
+        Label heading = new();
+        heading.Text = title;
+        heading.AddThemeColorOverride("font_color", new Color(0.36f, 0.24f, 0.16f, 1.0f));
+        wrapper.AddChild(heading);
+
+        return panel;
+    }
+
+    private static StyleBoxFlat CreateValidationSectionStyle()
+    {
+        return new StyleBoxFlat
+        {
+            BgColor = new Color(0.94f, 0.89f, 0.78f, 0.98f),
+            BorderWidthLeft = 1,
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1,
+            BorderColor = new Color(0.66f, 0.50f, 0.30f, 1.0f),
+            CornerRadiusTopLeft = 6,
+            CornerRadiusTopRight = 6,
+            CornerRadiusBottomRight = 6,
+            CornerRadiusBottomLeft = 6,
+        };
     }
 
     private void BuildBugFeedbackUi()
@@ -744,6 +1153,7 @@ public partial class BookTabsController : Control
         bool isSettings = ActiveRightTabName == "SettingsTab";
         bool isBug = ActiveRightTabName == "BugTab";
         bool isEquipment = !_isShowingRightTab && ActiveLeftTabName == "EquipmentTab";
+        bool isValidation = !_isShowingRightTab && ActiveLeftTabName == "ValidationTab";
         _settingsNavRoot.Visible = isSettings;
         _settingsActionRoot.Visible = isSettings;
         _settingsSystemRoot.Visible = isSettings && _activeSettingsSection == "system";
@@ -751,7 +1161,8 @@ public partial class BookTabsController : Control
         _settingsProgressRoot.Visible = isSettings && _activeSettingsSection == "progress";
         _bugFeedbackRoot.Visible = isBug;
         _equipmentRoot.Visible = isEquipment;
-        _leftContentLabel.Visible = !isSettings && !isBug && !isEquipment;
+        _validationRoot.Visible = isValidation;
+        _leftContentLabel.Visible = !isSettings && !isBug && !isEquipment && !isValidation;
         _rightPage.Visible = false;
     }
 
@@ -1022,6 +1433,12 @@ public partial class BookTabsController : Control
             UpdateSettingsUiVisibility();
             return;
         }
+        if (ActiveLeftTabName == "ValidationTab")
+        {
+            RefreshValidationPanelContent();
+            UpdateSettingsUiVisibility();
+            return;
+        }
         AnimateContentSwap(_leftContentLabel, _leftTween, GetLeftTabContent(ActiveLeftTabName), tween => _leftTween = tween, true);
     }
 
@@ -1039,6 +1456,7 @@ public partial class BookTabsController : Control
         SetButtonText("TopStrip/LeftTabs/BattleLogTab", UiText.LeftTabBattleLog);
         SetButtonText("TopStrip/LeftTabs/EquipmentTab", UiText.LeftTabEquipment);
         SetButtonText("TopStrip/LeftTabs/StatsTab", UiText.LeftTabStats);
+        SetButtonText("TopStrip/LeftTabs/ValidationTab", UiText.LeftTabValidation);
         SetButtonText("TopStrip/RightTabs/BugTab", UiText.RightTabBug);
         SetButtonText("TopStrip/RightTabs/SettingsTab", UiText.RightTabSettings);
         _closeButton.Text = "X";

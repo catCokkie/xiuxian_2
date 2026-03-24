@@ -16,7 +16,9 @@ The current UI surface also includes:
 
 - a bottom main bar for lightweight always-on progress visibility
 - a book-style submenu with `Cultivation`, `Battle Log`, `Equipment`, `Stats`, `Bug Feedback`, and `Settings`
+- the config validation view also exposes battle-drop simulation filters and quick-run actions
 - manual breakthrough when realm progress is full
+- a submenu config validation view with scope and active-level filters
 - persisted recent battle logs and basic local feedback export tools
 
 Current product boundaries:
@@ -52,7 +54,7 @@ For a fuller coverage summary and current testing gaps, see `TESTING.md`.
 
 - equipment acquisition is fixed-rule and debug-oriented, not full content-driven loot yet
 - equipment UI is minimal and focused on verification, not final UX
-- config validation currently exists through debug tooling, not a polished standalone panel yet
+- config validation now has a submenu panel, but polish and broader UX iteration are still pending
 - some anti-abuse goals are only partially implemented beyond current decay and cap rules
 - cloud sync, online features, and richer pet systems remain out of current product scope
 
