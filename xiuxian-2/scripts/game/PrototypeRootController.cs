@@ -30,6 +30,7 @@ namespace Xiuxian.Scripts.Game
         private ExploreProgressController? _exploreProgressController;
         private CloudSaveSyncService? _cloudSaveSyncService;
         private bool _cloudSyncEnabled;
+        private long _lastLoadedSavedUnix;
 
         private bool _saveDirty;
         private double _saveCooldown;
@@ -188,7 +189,9 @@ namespace Xiuxian.Scripts.Game
 
             EnsureStarterEquipmentLoadout();
 
-            if (!loaded)
+            bool appliedOfflineSettlement = loaded && ApplyOfflineSettlementIfNeeded();
+
+            if (!loaded || appliedOfflineSettlement)
             {
                 SaveAllState();
             }
@@ -250,6 +253,7 @@ namespace Xiuxian.Scripts.Game
                 return false;
             }
 
+            _lastLoadedSavedUnix = config.GetValue("meta", "last_saved_unix", 0L).AsInt64();
             int version = config.GetValue("meta", "version", 1).AsInt32();
             ReadUiState(config, version);
             ReadInputState(config);
@@ -280,6 +284,55 @@ namespace Xiuxian.Scripts.Game
                 }
             }
 
+            return true;
+        }
+
+        private bool ApplyOfflineSettlementIfNeeded()
+        {
+            if (_playerActionState == null || _resourceWalletState == null || _playerProgressState == null)
+            {
+                return false;
+            }
+
+            if (!PlayerActionCapabilityRules.HasCapability(_playerActionState, PlayerActionCapability.ConsumesApSettlement))
+            {
+                return false;
+            }
+
+            if (_lastLoadedSavedUnix <= 0)
+            {
+                return false;
+            }
+
+            long nowUnix = (long)Time.GetUnixTimeFromSystem();
+            double offlineSeconds = nowUnix - _lastLoadedSavedUnix;
+            if (offlineSeconds <= 1.0)
+            {
+                return false;
+            }
+
+            ActionSettlementResult result = OfflineSettlementRules.BuildCultivationOfflineSettlement(
+                offlineSeconds,
+                apPerInput: 1.0,
+                lingqiFactor: 0.9,
+                insightFactor: 0.08,
+                petAffinityFactor: 0.03,
+                realmExpFromLingqiRate: 0.25,
+                moodMultiplier: _playerProgressState.GetMoodMultiplier(),
+                realmMultiplier: _playerProgressState.GetRealmMultiplier(),
+                inputExpActive: false,
+                actionTargetId: _playerActionState.ActionTargetId);
+
+            if (!result.HasAnyReward)
+            {
+                return false;
+            }
+
+            _resourceWalletState.AddLingqi(result.LingqiGain);
+            _resourceWalletState.AddInsight(result.InsightGain);
+            _resourceWalletState.AddPetAffinity(result.PetAffinityGain);
+            _playerProgressState.AddRealmExp(result.RealmExpGain);
+            MarkDirty();
             return true;
         }
 
