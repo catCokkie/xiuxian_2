@@ -173,22 +173,121 @@
 - 按当前副本行动与离线输入预算，换算探索推进值。
 - 推进值达到阈值后，视为触发遭遇。
 
+#### 8.1.1 推荐公式
+- `offline_explore_progress = offline_input_budget * dungeon_progress_per_input`
+- `estimated_encounters = floor(offline_explore_progress / encounter_progress_threshold)`
+
+#### 8.1.2 设计要求
+- 副本离线先算“理论遭遇次数”，再进入压缩战斗。
+- 不直接从离线秒数推导奖励，必须经过“探索 -> 遭遇 -> 战斗结果”这层转换。
+
 ### 8.2 战斗结算
 - 使用玩家当前最终属性与当前副本怪物池，估算离线有效胜场数。
 - 第一版不单独展示失败次数。
 - 失败成本体现在“有效胜场折损”上。
 
-### 8.3 资源与掉落
+#### 8.2.1 总体原则
+- 不做逐回合战斗模拟。
+- 不做逐怪逐场日志回放。
+- 离线战斗结算的是“平均结果”，不是在线战斗过程回放。
+
+#### 8.2.2 怪物池评估方式
+- 副本离线战斗按当前关卡 `spawn_table` 的怪物权重进行加权评估。
+- 第一版推荐：
+  - 对怪物池内每个怪物单独计算“战斗效率因子”
+  - 再按 spawn weight 求加权平均
+- 不建议只取单个怪物，也不建议完全忽略权重。
+
+#### 8.2.3 单怪战斗效率估算
+对每个怪物，先估算玩家和怪物的平均击杀回合数：
+
+- `player_dpr = max(1, player_attack_after_defense) * crit_factor`
+- `monster_dpr = max(1, monster_attack_after_defense)`
+- `player_ttk = monster_hp / player_dpr`
+- `monster_ttk = player_hp / monster_dpr`
+
+说明：
+- 这里的 `ttk` 可理解为“平均需要多少回合打倒对方”。
+- `crit_factor` 不需要完整复刻在线暴击过程，第一版只要做平均修正即可。
+
+#### 8.2.4 战斗效率分档
+对每个怪物，计算：
+
+- `combat_ratio = monster_ttk / player_ttk`
+
+再映射为离线战斗档位：
+
+| combat_ratio | 档位 | victory_factor |
+|--------------|------|----------------|
+| `>= 1.8` | 碾压 | `0.95` |
+| `1.1 ~ 1.8` | 稳打 | `0.75` |
+| `0.7 ~ 1.1` | 吃力 | `0.40` |
+| `< 0.7` | 不适合 | `0.10` |
+
+解释：
+- `victory_factor` 不是胜率本身，而是理论遭遇次数折算成“有效胜场”的系数。
+- 这样可以把失败成本和低效率统一折叠进结果里。
+
+#### 8.2.5 怪物池加权结果
+- `weighted_victory_factor = sum(monster_weight_ratio * monster_victory_factor)`
+- `effective_victories = estimated_encounters * weighted_victory_factor`
+
+第一版建议：
+- `effective_victories` 保留浮点值用于资源和掉落期望值结算
+- 若需要整数战斗场次，可在展示层取整，但内部结算尽量保留浮点精度
+
+### 8.3 压缩战斗结果
+
+#### 8.3.1 推荐结算结构
+- `estimated_encounters`
+- `weighted_victory_factor`
+- `effective_victories`
+- `effective_failures = estimated_encounters - effective_victories`
+
+#### 8.3.2 核心口径
+- 副本离线收益的核心不是“打了多少场战斗”，而是“有多少场理论遭遇被转化为有效胜场”。
+- 一切资源、掉落与装备结算都基于 `effective_victories`。
+
+### 8.4 资源与掉落
 - 按有效胜场结算：
   - `lingqi`
   - `insight`
   - 材料掉落
   - 装备掉落（保守）
 
-### 8.4 不做逐场日志
+#### 8.4.1 资源结算建议
+- `lingqi_gain = average_battle_lingqi_reward * effective_victories`
+- `insight_gain = average_battle_insight_reward * effective_victories`
+
+#### 8.4.2 材料掉落建议
+- 第一版可按“有效胜场 * 平均掉落期望值”结算
+- 或按 `effective_victories` 的整数部分进行有限次 roll
+- 若要降低波动，优先采用期望值法；若要保留惊喜，采用有限次 roll
+
+#### 8.4.3 装备掉落建议
+- 装备掉落仍基于 `effective_victories` 估算
+- 但需经过独立件数上限控制
+- 不建议让离线副本完整复刻在线装备掉率曲线
+
+### 8.5 不做逐场日志
 - 离线副本只生成汇总结果，不生成 10~100 条逐场战斗日志。
 - 若需要提示，建议只显示一条离线摘要，例如：
   - `离线副本：推进 3.2 圈，获胜 7 场，掉落 1 件装备`
+
+### 8.6 第一版实现建议
+- 第一步：
+  - 先实现 `estimated_encounters`
+  - 再实现怪物池加权 `weighted_victory_factor`
+- 第二步：
+  - 基于 `effective_victories` 结算资源与材料
+- 第三步：
+  - 再接装备掉落与首通奖励
+
+### 8.7 验收标准
+- 相同副本下，高战力角色离线有效胜场明显高于低战力角色。
+- 离线副本收益整体低于在线稳定副本收益。
+- 怪物池权重变化会体现在离线结算结果中。
+- 不会因为单只极端怪物导致整个离线副本收益异常失真。
 
 ---
 
