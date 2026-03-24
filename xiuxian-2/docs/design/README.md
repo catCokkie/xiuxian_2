@@ -15,6 +15,8 @@
 - `08_content_sample_qi_refining.md`：炼气初期内容示例（可直接改）
 - `09_level_monster_drop_sample.md` / `.json`：关卡、怪物、掉落配置与样例数据
 - `10_todo.md`：全局任务池（按优先级、状态、验收标准维护）
+- `11_equipment_content_system.md`：正式装备内容系统设计（来源、稀有度、属性模型、UX、分期）
+- `12_equipment_sample_qi_refining.json`：炼气初期装备样例 JSON（模板、系列、兑换、掉落整合示例）
 
 ## 工作规则
 - 设计变更先改文档，再改代码。

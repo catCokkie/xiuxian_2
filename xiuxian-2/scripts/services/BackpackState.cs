@@ -16,6 +16,7 @@ namespace Xiuxian.Scripts.Services
 
         private readonly Godot.Collections.Dictionary<string, Variant> _items = new();
         private readonly Dictionary<string, EquipmentStatProfile> _equipmentProfiles = new();
+        private readonly Dictionary<string, EquipmentInstanceData> _equipmentInstances = new();
 
         public int GetItemCount(string itemId)
         {
@@ -45,13 +46,25 @@ namespace Xiuxian.Scripts.Services
             EmitSignal(SignalName.EquipmentInventoryChanged);
         }
 
+        public void AddEquipmentInstance(EquipmentInstanceData instance)
+        {
+            BackpackEquipmentInstanceRules.StoreInstance(_equipmentInstances, _equipmentProfiles, instance);
+            EmitSignal(SignalName.EquipmentInventoryChanged);
+        }
+
         public bool HasEquipment(string equipmentId)
         {
-            return _equipmentProfiles.ContainsKey(equipmentId);
+            return _equipmentProfiles.ContainsKey(equipmentId) || _equipmentInstances.ContainsKey(equipmentId);
         }
 
         public bool TryTakeEquipmentBySlot(EquipmentSlotType slot, out EquipmentStatProfile profile)
         {
+            if (BackpackEquipmentInstanceRules.TryTakeBySlot(_equipmentInstances, _equipmentProfiles, slot, out _, out profile))
+            {
+                EmitSignal(SignalName.EquipmentInventoryChanged);
+                return true;
+            }
+
             foreach (EquipmentStatProfile item in _equipmentProfiles.Values)
             {
                 if (item.Slot == slot)
@@ -65,6 +78,19 @@ namespace Xiuxian.Scripts.Services
 
             profile = default;
             return false;
+        }
+
+        public EquipmentInstanceData[] GetEquipmentInstances()
+        {
+            EquipmentInstanceData[] result = new EquipmentInstanceData[_equipmentInstances.Count];
+            int index = 0;
+            foreach (EquipmentInstanceData instance in _equipmentInstances.Values)
+            {
+                result[index] = instance;
+                index++;
+            }
+
+            return result;
         }
 
         public EquipmentStatProfile[] GetEquipmentProfiles()
@@ -89,7 +115,14 @@ namespace Xiuxian.Scripts.Services
                 equipment.Add(EquipmentProfileCodec.ToDictionary(profile));
             }
 
+            var equipmentInstances = new Godot.Collections.Array<Variant>();
+            foreach (EquipmentInstanceData instance in _equipmentInstances.Values)
+            {
+                equipmentInstances.Add(EquipmentInstanceCodec.ToDictionary(instance));
+            }
+
             result["__equipment_profiles"] = equipment;
+            result["__equipment_instances"] = equipmentInstances;
             return result;
         }
 
@@ -97,9 +130,14 @@ namespace Xiuxian.Scripts.Services
         {
             _items.Clear();
             _equipmentProfiles.Clear();
+            _equipmentInstances.Clear();
             foreach (string key in data.Keys)
             {
                 if (key == "__equipment_profiles")
+                {
+                    continue;
+                }
+                if (key == "__equipment_instances")
                 {
                     continue;
                 }
@@ -118,6 +156,21 @@ namespace Xiuxian.Scripts.Services
 
                     EquipmentStatProfile profile = EquipmentProfileCodec.FromDictionary((Godot.Collections.Dictionary<string, Variant>)item) with { IsEquipped = false };
                     _equipmentProfiles[profile.EquipmentId] = profile;
+                }
+            }
+
+            if (data.ContainsKey("__equipment_instances") && data["__equipment_instances"].VariantType == Variant.Type.Array)
+            {
+                var equipmentInstances = (Godot.Collections.Array<Variant>)data["__equipment_instances"];
+                foreach (Variant item in equipmentInstances)
+                {
+                    if (item.VariantType != Variant.Type.Dictionary)
+                    {
+                        continue;
+                    }
+
+                    EquipmentInstanceData instance = EquipmentInstanceCodec.FromDictionary((Godot.Collections.Dictionary<string, Variant>)item) with { IsEquipped = false };
+                    BackpackEquipmentInstanceRules.StoreInstance(_equipmentInstances, _equipmentProfiles, instance);
                 }
             }
         }

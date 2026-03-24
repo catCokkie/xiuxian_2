@@ -1,0 +1,186 @@
+{
+  "equipment_series": [
+    {
+      "series_id": "series_qi_outer_cave",
+      "series_name": "幽泉洞窟试炼系",
+      "theme_tags": ["cave", "wet", "yin-cold"],
+      "bind_level_ids": ["lv_qi_001", "lv_qi_002"],
+      "primary_slots": ["weapon", "armor"],
+      "rarity_focus": ["artifact", "spirit"],
+      "description": "适合炼气初期洞窟探索的均衡战斗装备。",
+      "future_set_bonus_id": ""
+    },
+    {
+      "series_id": "series_qi_shadow_swift",
+      "series_name": "影翼疾行系",
+      "theme_tags": ["flying", "swift", "shadow"],
+      "bind_level_ids": ["lv_qi_002", "lv_qi_003"],
+      "primary_slots": ["weapon", "accessory"],
+      "rarity_focus": ["artifact", "spirit"],
+      "description": "偏向速度与暴击的轻型装备系列。",
+      "future_set_bonus_id": ""
+    }
+  ],
+  "equipment_templates": [
+    {
+      "equipment_template_id": "eq_weapon_qi_outer_moss_blade",
+      "display_name": "苔锋短刃",
+      "slot": "weapon",
+      "series_id": "series_qi_outer_cave",
+      "rarity_tier": "artifact",
+      "realm_band": "qi_1_3",
+      "source_stage": "elite",
+      "main_stat_pool": [
+        { "stat": "attack_flat", "weight": 70, "min": 4, "max": 6 },
+        { "stat": "speed_flat", "weight": 30, "min": 2, "max": 3 }
+      ],
+      "sub_stat_pool": [
+        { "stat": "crit_chance_delta", "weight": 60, "min": 0.01, "max": 0.02 },
+        { "stat": "speed_flat", "weight": 40, "min": 1, "max": 2 }
+      ],
+      "power_budget_min": 12,
+      "power_budget_max": 16,
+      "flavor_tags": ["cave", "moss", "yin"],
+      "icon_id": "weapon_short_blade_01"
+    },
+    {
+      "equipment_template_id": "eq_armor_qi_outer_moss_robe",
+      "display_name": "苔纹护袍",
+      "slot": "armor",
+      "series_id": "series_qi_outer_cave",
+      "rarity_tier": "artifact",
+      "realm_band": "qi_1_3",
+      "source_stage": "first_clear",
+      "main_stat_pool": [
+        { "stat": "max_hp_flat", "weight": 65, "min": 12, "max": 16 },
+        { "stat": "defense_flat", "weight": 35, "min": 2, "max": 3 }
+      ],
+      "sub_stat_pool": [
+        { "stat": "defense_flat", "weight": 70, "min": 1, "max": 2 },
+        { "stat": "speed_flat", "weight": 30, "min": 1, "max": 1 }
+      ],
+      "power_budget_min": 11,
+      "power_budget_max": 15,
+      "flavor_tags": ["cave", "robe", "survival"],
+      "icon_id": "armor_robe_01"
+    },
+    {
+      "equipment_template_id": "eq_accessory_qi_shadow_ring",
+      "display_name": "影息指环",
+      "slot": "accessory",
+      "series_id": "series_qi_shadow_swift",
+      "rarity_tier": "spirit",
+      "realm_band": "qi_2_4",
+      "source_stage": "boss",
+      "main_stat_pool": [
+        { "stat": "crit_chance_delta", "weight": 55, "min": 0.02, "max": 0.03 },
+        { "stat": "speed_flat", "weight": 45, "min": 3, "max": 5 }
+      ],
+      "sub_stat_pool": [
+        { "stat": "crit_damage_delta", "weight": 60, "min": 0.08, "max": 0.12 },
+        { "stat": "attack_flat", "weight": 40, "min": 2, "max": 3 }
+      ],
+      "power_budget_min": 16,
+      "power_budget_max": 20,
+      "flavor_tags": ["shadow", "swift", "ring"],
+      "icon_id": "accessory_ring_01"
+    },
+    {
+      "equipment_template_id": "eq_weapon_qi_common_bone_dagger",
+      "display_name": "骨柄短匕",
+      "slot": "weapon",
+      "series_id": "series_qi_outer_cave",
+      "rarity_tier": "common_tool",
+      "realm_band": "qi_1_2",
+      "source_stage": "normal",
+      "main_stat_pool": [
+        { "stat": "attack_flat", "weight": 100, "min": 2, "max": 3 }
+      ],
+      "sub_stat_pool": [],
+      "power_budget_min": 6,
+      "power_budget_max": 8,
+      "flavor_tags": ["rough", "bone", "starter-replace"],
+      "icon_id": "weapon_dagger_01"
+    }
+  ],
+  "equipment_exchange_recipes": [
+    {
+      "recipe_id": "recipe_qi_outer_weapon_01",
+      "level_id": "lv_qi_001",
+      "output_template_id": "eq_weapon_qi_outer_moss_blade",
+      "output_rarity_tier": "artifact",
+      "output_slot": "weapon",
+      "cost_items": [
+        { "item_id": "spirit_herb", "qty": 6 },
+        { "item_id": "lingqi_shard", "qty": 12 }
+      ],
+      "unlock_condition": "first_clear",
+      "notes": "首区武器兜底配方。"
+    },
+    {
+      "recipe_id": "recipe_qi_outer_armor_01",
+      "level_id": "lv_qi_001",
+      "output_template_id": "eq_armor_qi_outer_moss_robe",
+      "output_rarity_tier": "artifact",
+      "output_slot": "armor",
+      "cost_items": [
+        { "item_id": "spirit_herb", "qty": 8 },
+        { "item_id": "broken_talisman", "qty": 4 }
+      ],
+      "unlock_condition": "first_clear",
+      "notes": "首区护具兜底配方。"
+    }
+  ],
+  "drop_table_equipment_examples": [
+    {
+      "drop_table_id": "drop_qi_outer_normal",
+      "entries": [
+        {
+          "entry_type": "equipment_template",
+          "equipment_template_id": "eq_weapon_qi_common_bone_dagger",
+          "weight": 8,
+          "min_qty": 1,
+          "max_qty": 1,
+          "equipment_rarity_override": "common_tool",
+          "slot_bias": "weapon",
+          "series_bias": "series_qi_outer_cave"
+        }
+      ]
+    },
+    {
+      "drop_table_id": "drop_qi_outer_elite",
+      "entries": [
+        {
+          "entry_type": "equipment_template",
+          "equipment_template_id": "eq_weapon_qi_outer_moss_blade",
+          "weight": 18,
+          "min_qty": 1,
+          "max_qty": 1,
+          "equipment_rarity_override": "artifact",
+          "slot_bias": "weapon",
+          "series_bias": "series_qi_outer_cave"
+        },
+        {
+          "entry_type": "equipment_template",
+          "equipment_template_id": "eq_accessory_qi_shadow_ring",
+          "weight": 6,
+          "min_qty": 1,
+          "max_qty": 1,
+          "equipment_rarity_override": "spirit",
+          "slot_bias": "accessory",
+          "series_bias": "series_qi_shadow_swift"
+        }
+      ]
+    }
+  ],
+  "first_clear_equipment_examples": [
+    {
+      "level_id": "lv_qi_001",
+      "first_clear": {
+        "equipment_templates": [
+          { "equipment_template_id": "eq_armor_qi_outer_moss_robe", "rarity_tier": "artifact", "qty": 1 }
+        ]
+      }
+    }
+  ]
+}

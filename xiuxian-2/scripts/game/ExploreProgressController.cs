@@ -1311,6 +1311,16 @@ namespace Xiuxian.Scripts.Game
                 dropCount = drops.Count;
                 itemPart = drops.Count > 0 ? BuildDropSummary(drops) : "none";
                 ApplyResourceAndItemRewards(0.0, 0.0, drops, "battle_drop");
+                if (_backpackState != null)
+                {
+                    foreach (EquipmentInstanceData equipmentDrop in _levelConfigLoader.GetLastGeneratedEquipmentDrops())
+                    {
+                        if (!_backpackState.HasEquipment(equipmentDrop.EquipmentId))
+                        {
+                            _backpackState.AddEquipmentInstance(equipmentDrop);
+                        }
+                    }
+                }
 
                 if (_levelConfigLoader.TryRollMonsterSettlementReward(_battleMonsterId, out lingqi, out insight))
                 {
@@ -1349,11 +1359,25 @@ namespace Xiuxian.Scripts.Game
             {
                 ApplyResourceAndItemRewards(lingqi, insight, items, RewardRules.BuildLevelCompletionSourceTag(levelId, firstClear));
 
-                if (firstClear && _backpackState != null && EquipmentRewardRules.TryBuildFirstClearReward(levelId, out EquipmentStatProfile equipmentReward))
+                if (firstClear && _backpackState != null)
                 {
-                    if (!_backpackState.HasEquipment(equipmentReward.EquipmentId))
+                    EquipmentInstanceData[] generatedRewards = _levelConfigLoader.GetLastGeneratedFirstClearEquipmentRewards();
+                    if (generatedRewards.Length > 0)
                     {
-                        _backpackState.AddEquipment(equipmentReward);
+                        foreach (EquipmentInstanceData equipmentReward in generatedRewards)
+                        {
+                            if (!_backpackState.HasEquipment(equipmentReward.EquipmentId))
+                            {
+                                _backpackState.AddEquipmentInstance(equipmentReward);
+                            }
+                        }
+                    }
+                    else if (EquipmentRewardRules.TryBuildFirstClearReward(levelId, out EquipmentStatProfile equipmentReward))
+                    {
+                        if (!_backpackState.HasEquipment(equipmentReward.EquipmentId))
+                        {
+                            _backpackState.AddEquipment(equipmentReward);
+                        }
                     }
                 }
             }

@@ -366,52 +366,9 @@ public partial class BookTabsController : Control
             _levelConfigLoader.PlayerBaseHp,
             _levelConfigLoader.PlayerAttackPerRound);
         CharacterStatBlock finalStats = CharacterStatRules.BuildFinalStats(baseStats, equippedProfiles);
-
-        StringBuilder sb = new();
-        sb.AppendLine(UiText.LeftTabEquipment);
-        sb.AppendLine($"当前已装备 {equippedProfiles.Length} 件");
-        sb.AppendLine($"基础属性：HP {baseStats.MaxHp} / 攻 {baseStats.Attack} / 防 {baseStats.Defense}");
-        sb.AppendLine($"装备后：HP {finalStats.MaxHp} / 攻 {finalStats.Attack} / 防 {finalStats.Defense}");
-
-        foreach (EquipmentStatProfile profile in equippedProfiles)
-        {
-            sb.AppendLine();
-            sb.AppendLine($"[{BuildSlotLabel(profile.Slot)}] {profile.DisplayName}");
-            sb.AppendLine(BuildModifierSummary(profile.Modifier));
-        }
-
+        EquipmentInstanceData[] backpackInstances = _backpackState.GetEquipmentInstances();
         EquipmentStatProfile[] backpackProfiles = _backpackState.GetEquipmentProfiles();
-        sb.AppendLine();
-        sb.AppendLine($"背包装备 {backpackProfiles.Length} 件");
-        foreach (EquipmentStatProfile profile in backpackProfiles)
-        {
-            sb.AppendLine($"- [{BuildSlotLabel(profile.Slot)}] {profile.DisplayName} | {BuildModifierSummary(profile.Modifier)}");
-        }
-
-        return sb.ToString().TrimEnd();
-    }
-
-    private static string BuildSlotLabel(EquipmentSlotType slot)
-    {
-        return slot switch
-        {
-            EquipmentSlotType.Weapon => "武器",
-            EquipmentSlotType.Armor => "护具",
-            EquipmentSlotType.Accessory => "饰品",
-            _ => "装备"
-        };
-    }
-
-    private static string BuildModifierSummary(CharacterStatModifier modifier)
-    {
-        List<string> parts = new();
-        if (modifier.MaxHpFlat != 0) parts.Add($"HP+{modifier.MaxHpFlat}");
-        if (modifier.AttackFlat != 0) parts.Add($"攻击+{modifier.AttackFlat}");
-        if (modifier.DefenseFlat != 0) parts.Add($"防御+{modifier.DefenseFlat}");
-        if (modifier.SpeedFlat != 0) parts.Add($"速度+{modifier.SpeedFlat}");
-        if (modifier.CritChanceDelta != 0.0) parts.Add($"暴击+{modifier.CritChanceDelta:P0}");
-        if (modifier.CritDamageDelta != 0.0) parts.Add($"暴伤+{modifier.CritDamageDelta:0.##}");
-        return parts.Count > 0 ? string.Join(" | ", parts) : "当前无额外词条";
+        return EquipmentPresentationRules.BuildEquipmentPageText(baseStats, finalStats, equippedProfiles, backpackInstances, backpackProfiles);
     }
 
     private void EquipFromBackpack(EquipmentSlotType slot)

@@ -31,6 +31,9 @@ namespace Xiuxian.Scripts.Services
         private int _activeLevelIndex;
         private readonly Dictionary<string, Godot.Collections.Dictionary<string, Variant>> _monsterById = new();
         private readonly Dictionary<string, Godot.Collections.Dictionary<string, Variant>> _dropTableById = new();
+        private readonly Dictionary<string, Godot.Collections.Dictionary<string, Variant>> _equipmentSeriesById = new();
+        private readonly Dictionary<string, Godot.Collections.Dictionary<string, Variant>> _equipmentTemplateById = new();
+        private readonly Dictionary<string, List<Godot.Collections.Dictionary<string, Variant>>> _equipmentExchangeRecipesByLevelId = new();
         private readonly Dictionary<string, int> _levelClearCountById = new();
         private readonly Dictionary<string, int> _pityCounterByKey = new();
         private readonly Dictionary<string, int> _dailyRollCountByTable = new();
@@ -45,7 +48,11 @@ namespace Xiuxian.Scripts.Services
         private readonly RandomNumberGenerator _rng = new();
         private readonly List<string> _validationIssues = new();
         private readonly List<Godot.Collections.Dictionary<string, Variant>> _validationEntries = new();
+        private readonly List<string> _lastEquipmentDropTemplateIds = new();
+        private readonly List<EquipmentInstanceData> _lastGeneratedEquipmentDrops = new();
+        private readonly List<EquipmentInstanceData> _lastGeneratedFirstClearEquipmentRewards = new();
         private string _lastDropTableResolved = "";
+        private string _lastLoadedConfigText = "";
         private bool _lastDailyCapBlocked;
         private bool _lastSoftCapSkipped;
         private bool _lastPityTriggered;
@@ -64,6 +71,9 @@ namespace Xiuxian.Scripts.Services
         {
             _monsterById.Clear();
             _dropTableById.Clear();
+            _equipmentSeriesById.Clear();
+            _equipmentTemplateById.Clear();
+            _equipmentExchangeRecipesByLevelId.Clear();
             _levelClearCountById.Clear();
             _pityCounterByKey.Clear();
             _dailyRollCountByTable.Clear();
@@ -86,6 +96,9 @@ namespace Xiuxian.Scripts.Services
         {
             _monsterById.Clear();
             _dropTableById.Clear();
+            _equipmentSeriesById.Clear();
+            _equipmentTemplateById.Clear();
+            _equipmentExchangeRecipesByLevelId.Clear();
             _levelClearCountById.Clear();
             _pityCounterByKey.Clear();
             _dailyRollCountByTable.Clear();
@@ -102,10 +115,14 @@ namespace Xiuxian.Scripts.Services
             }
 
             _rootData = (Godot.Collections.Dictionary<string, Variant>)parsed;
+            _lastLoadedConfigText = text;
             ParseLevelsSection();
             EnsureLevelUnlockBootstrap();
             IndexMonsters();
             IndexDropTables();
+            IndexEquipmentSeries();
+            IndexEquipmentTemplates();
+            IndexEquipmentExchangeRecipes();
             ValidateConfiguration();
 
             EmitSignal(SignalName.ConfigLoaded, ActiveLevelId, ActiveLevelName);
@@ -434,6 +451,8 @@ namespace Xiuxian.Scripts.Services
         {
             var result = new Dictionary<string, int>();
             ResetLastDropDebug();
+            _lastEquipmentDropTemplateIds.Clear();
+            _lastGeneratedEquipmentDrops.Clear();
             if (!TryGetMonster(monsterId, out var monster))
             {
                 return result;
@@ -483,7 +502,24 @@ namespace Xiuxian.Scripts.Services
             }
 
             ApplyPity(dropTableId, pityCounterKey, pityThreshold, pityItemId, pityQty, result);
+            GenerateLastEquipmentDropInstances();
             return result;
+        }
+
+        public Godot.Collections.Array<string> GetLastEquipmentDropTemplateIds()
+        {
+            var result = new Godot.Collections.Array<string>();
+            foreach (string templateId in _lastEquipmentDropTemplateIds)
+            {
+                result.Add(templateId);
+            }
+
+            return result;
+        }
+
+        public EquipmentInstanceData[] GetLastGeneratedEquipmentDrops()
+        {
+            return _lastGeneratedEquipmentDrops.ToArray();
         }
 
         public bool TryRollMonsterSettlementReward(string monsterId, out double lingqi, out double insight)
@@ -528,6 +564,7 @@ namespace Xiuxian.Scripts.Services
             lingqi = 0.0;
             insight = 0.0;
             items = new Dictionary<string, int>();
+            _lastGeneratedFirstClearEquipmentRewards.Clear();
 
             if (!TryGetActiveLevel(out var level))
             {
@@ -566,6 +603,8 @@ namespace Xiuxian.Scripts.Services
                         AddDrop(items, itemId, qty);
                     }
                 }
+
+                GenerateFirstClearEquipmentRewards(first);
             }
             else
             {
@@ -594,6 +633,11 @@ namespace Xiuxian.Scripts.Services
 
             _levelClearCountById[ActiveLevelId] = clearCount + 1;
             return true;
+        }
+
+        public EquipmentInstanceData[] GetLastGeneratedFirstClearEquipmentRewards()
+        {
+            return _lastGeneratedFirstClearEquipmentRewards.ToArray();
         }
 
         public string BuildDebugSummary()
@@ -763,6 +807,77 @@ namespace Xiuxian.Scripts.Services
                     result.Add(levelId);
                 }
             }
+            return result;
+        }
+
+        public Godot.Collections.Array<string> GetEquipmentSeriesIds()
+        {
+            var result = new Godot.Collections.Array<string>();
+            foreach (string id in _equipmentSeriesById.Keys)
+            {
+                result.Add(id);
+            }
+            return result;
+        }
+
+        public Godot.Collections.Array<string> GetEquipmentTemplateIds()
+        {
+            var result = new Godot.Collections.Array<string>();
+            foreach (string id in _equipmentTemplateById.Keys)
+            {
+                result.Add(id);
+            }
+            return result;
+        }
+
+        public Godot.Collections.Array<string> GetEquipmentExchangeLevelIds()
+        {
+            var result = new Godot.Collections.Array<string>();
+            foreach (string id in _equipmentExchangeRecipesByLevelId.Keys)
+            {
+                result.Add(id);
+            }
+            return result;
+        }
+
+        public bool TryGetEquipmentSeries(string seriesId, out Godot.Collections.Dictionary<string, Variant> seriesData)
+        {
+            if (_equipmentSeriesById.TryGetValue(seriesId, out seriesData))
+            {
+                seriesData = new Godot.Collections.Dictionary<string, Variant>(seriesData);
+                return true;
+            }
+
+            seriesData = new Godot.Collections.Dictionary<string, Variant>();
+            return false;
+        }
+
+        public bool TryGetEquipmentTemplate(string templateId, out Godot.Collections.Dictionary<string, Variant> templateData)
+        {
+            if (_equipmentTemplateById.TryGetValue(templateId, out templateData))
+            {
+                templateData = new Godot.Collections.Dictionary<string, Variant>(templateData);
+                return true;
+            }
+
+            templateData = new Godot.Collections.Dictionary<string, Variant>();
+            return false;
+        }
+
+        public Godot.Collections.Array<Godot.Collections.Dictionary<string, Variant>> GetEquipmentExchangeRecipes(string levelId = "")
+        {
+            var result = new Godot.Collections.Array<Godot.Collections.Dictionary<string, Variant>>();
+            string resolvedLevelId = string.IsNullOrEmpty(levelId) ? ActiveLevelId : levelId;
+            if (string.IsNullOrEmpty(resolvedLevelId) || !_equipmentExchangeRecipesByLevelId.TryGetValue(resolvedLevelId, out List<Godot.Collections.Dictionary<string, Variant>> recipes))
+            {
+                return result;
+            }
+
+            foreach (var recipe in recipes)
+            {
+                result.Add(new Godot.Collections.Dictionary<string, Variant>(recipe));
+            }
+
             return result;
         }
 
@@ -1208,6 +1323,7 @@ namespace Xiuxian.Scripts.Services
             }
 
             var entries = (Godot.Collections.Array<Variant>)entriesVariant;
+            List<EquipmentDropResolutionRules.DropEntrySpec> specs = BuildDropEntrySpecs(entries);
             for (int i = 0; i < rollCount; i++)
             {
                 if (!TryConsumeDropRoll(table, dropTableId, out int hourlyCountAfterConsume))
@@ -1220,17 +1336,24 @@ namespace Xiuxian.Scripts.Services
                     continue;
                 }
 
-                Godot.Collections.Dictionary<string, Variant> picked = PickWeightedDropEntry(entries);
-                if (picked.Count == 0)
+                EquipmentDropResolutionRules.DropEntrySpec picked = EquipmentDropResolutionRules.PickWeightedEntry(specs, totalWeight => _rng.RandiRange(1, totalWeight));
+                if (picked.Weight <= 0)
                 {
                     continue;
                 }
 
-                string itemId = GetString(picked, "item_id", "");
-                int minQty = Math.Max(0, picked.ContainsKey("min_qty") ? picked["min_qty"].AsInt32() : 1);
-                int maxQty = Math.Max(minQty, picked.ContainsKey("max_qty") ? picked["max_qty"].AsInt32() : minQty);
-                int qty = _rng.RandiRange(minQty, maxQty);
-                AddDrop(result, itemId, qty);
+                EquipmentDropResolutionRules.DropResolveResult resolved = EquipmentDropResolutionRules.ResolveEntry(
+                    picked,
+                    (minQty, maxQty) => _rng.RandiRange(minQty, Math.Max(minQty, maxQty)));
+
+                if (!string.IsNullOrEmpty(resolved.ItemId))
+                {
+                    AddDrop(result, resolved.ItemId, resolved.Quantity);
+                }
+                else if (!string.IsNullOrEmpty(resolved.EquipmentTemplateId))
+                {
+                    _lastEquipmentDropTemplateIds.Add(resolved.EquipmentTemplateId);
+                }
             }
         }
 
@@ -1374,9 +1497,9 @@ namespace Xiuxian.Scripts.Services
             return decay;
         }
 
-        private Godot.Collections.Dictionary<string, Variant> PickWeightedDropEntry(Godot.Collections.Array<Variant> entries)
+        private static List<EquipmentDropResolutionRules.DropEntrySpec> BuildDropEntrySpecs(Godot.Collections.Array<Variant> entries)
         {
-            int totalWeight = 0;
+            var result = new List<EquipmentDropResolutionRules.DropEntrySpec>();
             foreach (Variant item in entries)
             {
                 if (item.VariantType != Variant.Type.Dictionary)
@@ -1385,38 +1508,119 @@ namespace Xiuxian.Scripts.Services
                 }
 
                 var dict = (Godot.Collections.Dictionary<string, Variant>)item;
-                totalWeight += Math.Max(0, dict.ContainsKey("weight") ? dict["weight"].AsInt32() : 0);
-            }
-
-            if (totalWeight <= 0)
-            {
-                return new Godot.Collections.Dictionary<string, Variant>();
-            }
-
-            int roll = _rng.RandiRange(1, totalWeight);
-            int acc = 0;
-            foreach (Variant item in entries)
-            {
-                if (item.VariantType != Variant.Type.Dictionary)
-                {
-                    continue;
-                }
-
-                var dict = (Godot.Collections.Dictionary<string, Variant>)item;
+                string entryType = GetString(dict, "entry_type", "item");
+                string itemId = GetString(dict, "item_id", "");
+                string equipmentTemplateId = GetString(dict, "equipment_template_id", "");
                 int weight = Math.Max(0, dict.ContainsKey("weight") ? dict["weight"].AsInt32() : 0);
-                if (weight <= 0)
+                int minQty = Math.Max(0, dict.ContainsKey("min_qty") ? dict["min_qty"].AsInt32() : 1);
+                int maxQty = Math.Max(minQty, dict.ContainsKey("max_qty") ? dict["max_qty"].AsInt32() : minQty);
+
+                result.Add(new EquipmentDropResolutionRules.DropEntrySpec(
+                    entryType,
+                    itemId,
+                    equipmentTemplateId,
+                    weight,
+                    minQty,
+                    maxQty));
+            }
+
+            return result;
+        }
+
+        private void GenerateLastEquipmentDropInstances()
+        {
+            _lastGeneratedEquipmentDrops.Clear();
+            if (_lastEquipmentDropTemplateIds.Count == 0)
+            {
+                return;
+            }
+
+            var specsByTemplateId = new Dictionary<string, EquipmentGenerationRules.EquipmentTemplateGenerationSpec>();
+            foreach (string templateId in _lastEquipmentDropTemplateIds)
+            {
+                if (specsByTemplateId.ContainsKey(templateId))
                 {
                     continue;
                 }
 
-                acc += weight;
-                if (roll <= acc)
+                if (_equipmentTemplateById.TryGetValue(templateId, out var templateDict))
                 {
-                    return dict;
+                    specsByTemplateId[templateId] = EquipmentGenerationRules.FromTemplateDictionary(templateDict);
                 }
             }
 
-            return new Godot.Collections.Dictionary<string, Variant>();
+            EquipmentInstanceData[] generated = EquipmentDropInstanceGenerationRules.GenerateInstances(
+                specsByTemplateId,
+                _lastEquipmentDropTemplateIds,
+                ActiveLevelId,
+                EquipmentSourceStage.Normal,
+                totalWeight => _rng.RandiRange(1, totalWeight),
+                (min, max) => min == max ? min : _rng.RandfRange((float)min, (float)max),
+                () => (long)Time.GetUnixTimeFromSystem());
+
+            _lastGeneratedEquipmentDrops.AddRange(generated);
+        }
+
+        private void GenerateFirstClearEquipmentRewards(Godot.Collections.Dictionary<string, Variant> firstClearRewards)
+        {
+            _lastGeneratedFirstClearEquipmentRewards.Clear();
+            if (!firstClearRewards.ContainsKey("equipment_templates") || firstClearRewards["equipment_templates"].VariantType != Variant.Type.Array)
+            {
+                return;
+            }
+
+            var rewardSpecs = new List<FirstClearEquipmentRewardRules.FirstClearEquipmentRewardSpec>();
+            var equipmentTemplates = (Godot.Collections.Array<Variant>)firstClearRewards["equipment_templates"];
+            foreach (Variant item in equipmentTemplates)
+            {
+                if (item.VariantType != Variant.Type.Dictionary)
+                {
+                    continue;
+                }
+
+                var dict = (Godot.Collections.Dictionary<string, Variant>)item;
+                string templateId = GetString(dict, "equipment_template_id", "");
+                string rarityText = GetString(dict, "rarity_tier", "");
+                int qty = Math.Max(0, dict.ContainsKey("qty") ? dict["qty"].AsInt32() : 1);
+                EquipmentRarityTier? rarityOverride = ParseOptionalRarity(rarityText);
+                rewardSpecs.Add(new FirstClearEquipmentRewardRules.FirstClearEquipmentRewardSpec(templateId, rarityOverride, qty));
+            }
+
+            var specsByTemplateId = new Dictionary<string, EquipmentGenerationRules.EquipmentTemplateGenerationSpec>();
+            foreach (FirstClearEquipmentRewardRules.FirstClearEquipmentRewardSpec reward in rewardSpecs)
+            {
+                if (string.IsNullOrEmpty(reward.EquipmentTemplateId) || specsByTemplateId.ContainsKey(reward.EquipmentTemplateId))
+                {
+                    continue;
+                }
+
+                if (_equipmentTemplateById.TryGetValue(reward.EquipmentTemplateId, out var templateDict))
+                {
+                    specsByTemplateId[reward.EquipmentTemplateId] = EquipmentGenerationRules.FromTemplateDictionary(templateDict);
+                }
+            }
+
+            EquipmentInstanceData[] generated = FirstClearEquipmentRewardRules.GenerateInstances(
+                specsByTemplateId,
+                rewardSpecs,
+                ActiveLevelId,
+                totalWeight => _rng.RandiRange(1, totalWeight),
+                (min, max) => min == max ? min : _rng.RandfRange((float)min, (float)max),
+                () => (long)Time.GetUnixTimeFromSystem());
+
+            _lastGeneratedFirstClearEquipmentRewards.AddRange(generated);
+        }
+
+        private static EquipmentRarityTier? ParseOptionalRarity(string rarity)
+        {
+            return rarity switch
+            {
+                "common_tool" => EquipmentRarityTier.CommonTool,
+                "artifact" => EquipmentRarityTier.Artifact,
+                "spirit" => EquipmentRarityTier.Spirit,
+                "treasure" => EquipmentRarityTier.Treasure,
+                _ => null,
+            };
         }
 
         private static void AddDrop(Dictionary<string, int> result, string itemId, int qty)
@@ -1615,6 +1819,20 @@ namespace Xiuxian.Scripts.Services
 
             ValidateMonsters();
             ValidateDropTables(levelIds);
+            ValidateEquipmentConfiguration();
+        }
+
+        private void ValidateEquipmentConfiguration()
+        {
+            foreach (var issue in EquipmentConfigValidationTextRules.Validate(_lastLoadedConfigText))
+            {
+                AddValidationIssue(
+                    scope: issue.Scope,
+                    id: issue.Id,
+                    field: issue.Field,
+                    message: issue.Message,
+                    levelId: issue.LevelId);
+            }
         }
 
         private void ValidateLevelSpawnTable(Godot.Collections.Dictionary<string, Variant> level, string levelId)
@@ -1883,13 +2101,37 @@ namespace Xiuxian.Scripts.Services
                     }
 
                     var entry = (Godot.Collections.Dictionary<string, Variant>)item;
+                    string entryType = GetString(entry, "entry_type", "item");
                     string itemId = GetString(entry, "item_id", "");
+                    string equipmentTemplateId = GetString(entry, "equipment_template_id", "");
                     int weight = Math.Max(0, entry.ContainsKey("weight") ? entry["weight"].AsInt32() : 0);
                     int qtyMin = Math.Max(0, entry.ContainsKey("qty_min") ? entry["qty_min"].AsInt32() : 0);
                     int qtyMax = Math.Max(0, entry.ContainsKey("qty_max") ? entry["qty_max"].AsInt32() : 0);
                     totalWeight += weight;
 
-                    if (string.IsNullOrEmpty(itemId))
+                    bool isEquipmentTemplate = entryType == "equipment_template";
+                    if (isEquipmentTemplate)
+                    {
+                        if (string.IsNullOrEmpty(equipmentTemplateId))
+                        {
+                            AddValidationIssue(
+                                scope: "drop_table",
+                                id: tableId,
+                                field: $"entries[{i}].equipment_template_id",
+                                message: "missing",
+                                dropTableId: tableId);
+                        }
+                        else if (!_equipmentTemplateById.ContainsKey(equipmentTemplateId))
+                        {
+                            AddValidationIssue(
+                                scope: "drop_table",
+                                id: tableId,
+                                field: $"entries[{i}].equipment_template_id",
+                                message: $"equipment template '{equipmentTemplateId}' not found",
+                                dropTableId: tableId);
+                        }
+                    }
+                    else if (string.IsNullOrEmpty(itemId))
                     {
                         AddValidationIssue(
                             scope: "drop_table",
@@ -2072,6 +2314,54 @@ namespace Xiuxian.Scripts.Services
                 }
 
                 _dropTableById[id] = dict;
+            }
+        }
+
+        private void IndexEquipmentSeries()
+        {
+            _equipmentSeriesById.Clear();
+            var indexes = EquipmentConfigTextParser.ParseIndexes(_lastLoadedConfigText);
+            foreach (var kv in indexes.SeriesJsonById)
+            {
+                Variant parsed = Json.ParseString(kv.Value);
+                if (parsed.VariantType == Variant.Type.Dictionary)
+                {
+                    _equipmentSeriesById[kv.Key] = (Godot.Collections.Dictionary<string, Variant>)parsed;
+                }
+            }
+        }
+
+        private void IndexEquipmentTemplates()
+        {
+            _equipmentTemplateById.Clear();
+            var indexes = EquipmentConfigTextParser.ParseIndexes(_lastLoadedConfigText);
+            foreach (var kv in indexes.TemplateJsonById)
+            {
+                Variant parsed = Json.ParseString(kv.Value);
+                if (parsed.VariantType == Variant.Type.Dictionary)
+                {
+                    _equipmentTemplateById[kv.Key] = (Godot.Collections.Dictionary<string, Variant>)parsed;
+                }
+            }
+        }
+
+        private void IndexEquipmentExchangeRecipes()
+        {
+            _equipmentExchangeRecipesByLevelId.Clear();
+            var indexes = EquipmentConfigTextParser.ParseIndexes(_lastLoadedConfigText);
+            foreach (var kv in indexes.ExchangeRecipeJsonByLevelId)
+            {
+                var list = new List<Godot.Collections.Dictionary<string, Variant>>();
+                foreach (string recipeJson in kv.Value)
+                {
+                    Variant parsed = Json.ParseString(recipeJson);
+                    if (parsed.VariantType == Variant.Type.Dictionary)
+                    {
+                        list.Add((Godot.Collections.Dictionary<string, Variant>)parsed);
+                    }
+                }
+
+                _equipmentExchangeRecipesByLevelId[kv.Key] = list;
             }
         }
 
