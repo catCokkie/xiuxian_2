@@ -309,14 +309,15 @@ namespace Xiuxian.Scripts.Game
 
             long nowUnix = (long)Time.GetUnixTimeFromSystem();
             double offlineSeconds = nowUnix - _lastLoadedSavedUnix;
-            if (offlineSeconds <= 1.0)
+            OfflineSettlementRules.OfflineTimeEvaluation evaluation = OfflineSettlementRules.EvaluateOfflineSeconds(offlineSeconds);
+            if (evaluation.GuardMode == OfflineSettlementRules.OfflineTimeGuardMode.Invalid || evaluation.EffectiveOfflineSeconds <= 1.0)
             {
                 return false;
             }
 
             ActionSettlementResult result = isCultivation
                 ? OfflineSettlementRules.BuildCultivationOfflineSettlement(
-                    offlineSeconds,
+                    evaluation.EffectiveOfflineSeconds,
                     apPerInput: 1.0,
                     lingqiFactor: 0.9,
                     insightFactor: 0.08,
@@ -326,7 +327,7 @@ namespace Xiuxian.Scripts.Game
                     realmMultiplier: _playerProgressState.GetRealmMultiplier(),
                     inputExpActive: false,
                     actionTargetId: _playerActionState.ActionTargetId)
-                : BuildOfflineDungeonSettlement(offlineSeconds);
+                : BuildOfflineDungeonSettlement(evaluation.EffectiveOfflineSeconds);
 
             if (!result.HasAnyReward)
             {

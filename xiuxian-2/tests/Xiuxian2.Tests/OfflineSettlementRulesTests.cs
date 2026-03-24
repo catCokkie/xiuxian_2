@@ -18,7 +18,27 @@ public sealed class OfflineSettlementRulesTests
         double inputsA = OfflineSettlementRules.CalculateOfflineInputBudget(24 * 60 * 60);
         double inputsB = OfflineSettlementRules.CalculateOfflineInputBudget(48 * 60 * 60);
 
-        Assert.Equal(inputsA, inputsB, 6);
+        Assert.True(inputsB < inputsA);
+    }
+
+    [Fact]
+    public void EvaluateOfflineSeconds_MarksNegativeDeltaAsInvalid()
+    {
+        OfflineSettlementRules.OfflineTimeEvaluation evaluation = OfflineSettlementRules.EvaluateOfflineSeconds(-10);
+
+        Assert.Equal(OfflineSettlementRules.OfflineTimeGuardMode.Invalid, evaluation.GuardMode);
+        Assert.Equal(0.0, evaluation.EffectiveOfflineSeconds);
+    }
+
+    [Fact]
+    public void EvaluateOfflineSeconds_ReducesSuspiciouslyLargeDelta()
+    {
+        OfflineSettlementRules.OfflineTimeEvaluation normal = OfflineSettlementRules.EvaluateOfflineSeconds(24 * 60 * 60);
+        OfflineSettlementRules.OfflineTimeEvaluation guarded = OfflineSettlementRules.EvaluateOfflineSeconds(48 * 60 * 60);
+
+        Assert.Equal(OfflineSettlementRules.OfflineTimeGuardMode.Normal, normal.GuardMode);
+        Assert.Equal(OfflineSettlementRules.OfflineTimeGuardMode.Guarded, guarded.GuardMode);
+        Assert.True(guarded.EffectiveOfflineSeconds < normal.EffectiveOfflineSeconds);
     }
 
     [Fact]

@@ -5,6 +5,36 @@ namespace Xiuxian.Scripts.Services
     public static class OfflineSettlementRules
     {
         public const double MaxOfflineSeconds = 24.0 * 60.0 * 60.0;
+        public const double SuspiciousOfflineSecondsThreshold = 36.0 * 60.0 * 60.0;
+        public const double GuardedTimeReductionFactor = 0.25;
+
+        public enum OfflineTimeGuardMode
+        {
+            Normal,
+            Guarded,
+            Invalid,
+        }
+
+        public readonly record struct OfflineTimeEvaluation(
+            double RawOfflineSeconds,
+            double EffectiveOfflineSeconds,
+            OfflineTimeGuardMode GuardMode);
+
+        public static OfflineTimeEvaluation EvaluateOfflineSeconds(double offlineSeconds)
+        {
+            if (offlineSeconds <= 0.0)
+            {
+                return new OfflineTimeEvaluation(offlineSeconds, 0.0, OfflineTimeGuardMode.Invalid);
+            }
+
+            if (offlineSeconds > SuspiciousOfflineSecondsThreshold)
+            {
+                double guardedSeconds = ClampOfflineSeconds(offlineSeconds) * GuardedTimeReductionFactor;
+                return new OfflineTimeEvaluation(offlineSeconds, guardedSeconds, OfflineTimeGuardMode.Guarded);
+            }
+
+            return new OfflineTimeEvaluation(offlineSeconds, ClampOfflineSeconds(offlineSeconds), OfflineTimeGuardMode.Normal);
+        }
 
         public static double ClampOfflineSeconds(double offlineSeconds)
         {
@@ -13,7 +43,7 @@ namespace Xiuxian.Scripts.Services
 
         public static double CalculateOfflineInputBudget(double offlineSeconds)
         {
-            double remainingMinutes = ClampOfflineSeconds(offlineSeconds) / 60.0;
+            double remainingMinutes = EvaluateOfflineSeconds(offlineSeconds).EffectiveOfflineSeconds / 60.0;
             double totalInputs = 0.0;
 
             totalInputs += ConsumeSegment(ref remainingMinutes, 30.0, 12.0);
@@ -36,7 +66,8 @@ namespace Xiuxian.Scripts.Services
             bool inputExpActive,
             string actionTargetId = "")
         {
-            double inputBudget = CalculateOfflineInputBudget(offlineSeconds);
+            OfflineTimeEvaluation evaluated = EvaluateOfflineSeconds(offlineSeconds);
+            double inputBudget = CalculateOfflineInputBudget(evaluated.EffectiveOfflineSeconds);
             double offlineAp = inputBudget * apPerInput;
 
             double lingqiGain = offlineAp * lingqiFactor * moodMultiplier * realmMultiplier;
